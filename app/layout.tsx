@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { cn } from "@/lib/utils";
+import { THEME_STORAGE_KEY, THEME_DARK_CLASS } from "@/lib/theme";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -27,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={cn(
           geistSans.variable,
@@ -35,6 +36,11 @@ export default function RootLayout({
           "font-sans antialiased"
         )}
       >
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');if(t==='${THEME_DARK_CLASS}')document.documentElement.classList.add('${THEME_DARK_CLASS}')}catch(e){}})()`,
+          }}
+        />
         {children}
       </body>
     </html>

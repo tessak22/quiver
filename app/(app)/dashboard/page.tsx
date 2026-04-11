@@ -309,7 +309,7 @@ function RecentSessionsBlock({
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold shrink-0 ${
-                        MODE_COLORS[mode] ?? 'bg-gray-100 text-gray-800'
+                        MODE_COLORS[mode] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
                       }`}
                     >
                       {MODE_LABELS[mode] ?? mode}
@@ -384,7 +384,7 @@ function RecentArtifactsBlock({
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                           STATUS_COLORS[artStatus] ??
-                          'bg-gray-100 text-gray-800'
+                          'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
                         }`}
                       >
                         {STATUS_LABELS[artStatus] ?? artStatus}
@@ -554,7 +554,7 @@ function ContextStatusBlock({
               </span>
               {pendingProposals > 0 ? (
                 <Link href="/context">
-                  <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-200 cursor-pointer">
+                  <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-200 dark:hover:bg-amber-800 cursor-pointer">
                     {pendingProposals} pending
                   </Badge>
                 </Link>
