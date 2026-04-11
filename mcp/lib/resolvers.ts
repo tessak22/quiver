@@ -20,15 +20,23 @@ export async function resolveCampaignId(
   if (campaignId) return campaignId;
 
   if (campaignName) {
-    const match = await prisma.campaign.findFirst({
+    const matches = await prisma.campaign.findMany({
       where: { name: { contains: campaignName, mode: 'insensitive' } },
+      select: { id: true, name: true },
+      take: 5,
     });
-    if (!match) {
+    if (matches.length === 0) {
       throw new Error(
         `No campaign found matching '${campaignName}'. Check campaign names with list_campaigns.`
       );
     }
-    return match.id;
+    if (matches.length > 1) {
+      const list = matches.map((c) => `${c.name} (${c.id})`).join(', ');
+      throw new Error(
+        `Found ${matches.length} campaigns matching '${campaignName}': ${list}. Provide the campaign_id.`
+      );
+    }
+    return matches[0].id;
   }
 
   if (options?.fallbackToDefault) {

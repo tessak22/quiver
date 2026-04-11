@@ -184,23 +184,25 @@ export function registerPerformanceTools(server: McpServer) {
   // -----------------------------------------------------------------------
   server.tool(
     'get_close_the_loop_queue',
-    'List artifacts that are live but have not had results logged yet. These are your pending close-the-loop reminders.',
+    'List artifacts that are live but have not had results logged yet. due_date is when results are due (go-live + 14 days). days_overdue is positive when past due, negative when still upcoming.',
     {
       overdue_only: z
         .boolean()
         .optional()
         .default(false)
-        .describe('Only show reminders where the artifact has been live for more than 7 days without results logged'),
+        .describe('Only show reminders whose due date has already passed'),
     },
     async ({ overdue_only }) => {
       try {
         const reminders = await getReminders();
 
+        // Reminder rows are created with recordedAt = go-live + 14 days (the due date).
+        // All date fields here use due-date semantics: due_date = recordedAt,
+        // days_overdue = days since due date (positive = past due, negative = upcoming).
         const now = new Date();
-        const OVERDUE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
         const items = reminders
           .filter((r) => {
-            if (overdue_only) return (now.getTime() - r.recordedAt.getTime()) > OVERDUE_THRESHOLD_MS;
+            if (overdue_only) return r.recordedAt < now;
             return true;
           })
           .map((r) => ({
@@ -208,8 +210,8 @@ export function registerPerformanceTools(server: McpServer) {
             title: r.artifact?.title,
             type: r.artifact?.type,
             campaign_name: r.campaign?.name,
-            went_live_at: r.recordedAt,
-            days_since_live: Math.floor(
+            due_date: r.recordedAt,
+            days_overdue: Math.floor(
               (now.getTime() - r.recordedAt.getTime()) / (1000 * 60 * 60 * 24)
             ),
           }));
