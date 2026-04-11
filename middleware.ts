@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_ROUTES = ['/login', '/invite', '/shared'];
+const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public'];
 
 
 // Routes that require auth but NOT team membership (pre-membership flows)

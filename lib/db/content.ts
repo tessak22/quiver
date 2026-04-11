@@ -29,10 +29,15 @@ import type { PerformanceSignal } from '@/types';
 // -------------------------------------------------------------------------
 
 export async function generateSlug(title: string): Promise<string> {
-  const base = title
+  let base = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+
+  // Fallback for titles that normalize to nothing (e.g. punctuation-only)
+  if (!base) {
+    base = 'untitled';
+  }
 
   // Check if base slug is available
   const existing = await prisma.contentPiece.findUnique({
