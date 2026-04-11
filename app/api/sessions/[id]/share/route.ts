@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSession } from '@/lib/db/sessions';
+import { getTeamMember } from '@/lib/db/team';
 
 /**
  * Generates a deterministic share token for a session.
@@ -46,6 +47,12 @@ export async function POST(
 
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  // POST requires team membership — middleware exempts share routes for GET (public viewing)
+  const member = await getTeamMember(user.id);
+  if (!member) {
+    return NextResponse.json({ error: 'Not a team member' }, { status: 403 });
   }
 
   const session = await getSession(params.id);
