@@ -3,9 +3,15 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public'];
 
-
 // Routes that require auth but NOT team membership (pre-membership flows)
-const MEMBERSHIP_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding'];
+const MEMBERSHIP_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding', '/api/auth/logout', '/access-denied'];
+
+// Routes that bypass the onboarding-complete gate. Subset of membership-exempt
+// routes — /access-denied is intentionally excluded so the onboarding gate
+// still covers it (only non-members are redirected there, so it's unreachable
+// before onboarding anyway). /api/auth/logout is included because users must
+// always be able to sign out.
+const ONBOARDING_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding', '/api/auth/logout'];
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -82,8 +88,20 @@ export async function middleware(request: NextRequest) {
             { status: 403 }
           );
         }
+
+        // If onboarding is already complete, send to access-denied instead of
+        // setup — prevents a dead-end loop where setup rejects re-onboarding.
+        // Uses maybeSingle() so zero rows returns null/null (not an error),
+        // and only actual query failures set contextError.
+        const { data: activeContext, error: contextError } = await supabase
+          .from('context_versions')
+          .select('id')
+          .eq('isActive', true)
+          .limit(1)
+          .maybeSingle();
+
         const url = request.nextUrl.clone();
-        url.pathname = '/setup';
+        url.pathname = activeContext || contextError ? '/access-denied' : '/setup';
         return NextResponse.redirect(url);
       }
 
@@ -98,19 +116,26 @@ export async function middleware(request: NextRequest) {
   }
 
   // Check if onboarding is complete (cookie set after onboarding)
-  // If not complete and not on setup page, redirect to setup
-  if (user && !isPublicRoute && !isMembershipExempt && pathname !== '/setup') {
+  // If not complete and not on an onboarding-exempt route, redirect to setup
+  const isOnboardingExempt = ONBOARDING_EXEMPT_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
+
+  if (user && !isPublicRoute && !isOnboardingExempt && !isShareApi) {
     const onboardingComplete = request.cookies.get('quiver_onboarded')?.value;
     if (!onboardingComplete) {
-      // Check DB only if cookie not set — this runs once per session
-      const { data: activeContext } = await supabase
+      // Check DB only if cookie not set — this runs once per session.
+      // Uses maybeSingle() so zero rows returns null/null (not an error).
+      // On actual query failure, fall through rather than redirecting to
+      // /setup — a transient DB error should not trap users in a dead-end.
+      const { data: activeContext, error: onboardingQueryError } = await supabase
         .from('context_versions')
         .select('id')
         .eq('isActive', true)
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (!activeContext) {
+      if (!activeContext && !onboardingQueryError) {
         if (pathname.startsWith('/api/')) {
           return NextResponse.json(
             { error: 'Onboarding not complete' },
