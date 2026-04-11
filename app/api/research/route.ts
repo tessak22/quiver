@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { createClient } from '@/lib/supabase/server';
 import {
   createResearchEntry,
@@ -93,8 +94,10 @@ export async function POST(request: Request) {
     createdBy: user.id,
   });
 
-  // Trigger AI processing asynchronously — do NOT await
-  void processResearchEntry({
+  // Run AI processing after response is sent — waitUntil keeps the
+  // serverless function alive until the promise settles, preventing
+  // the work from being dropped when the runtime suspends.
+  waitUntil(processResearchEntry({
     id: entry.id,
     title: entry.title,
     sourceType: entry.sourceType,
@@ -104,7 +107,7 @@ export async function POST(request: Request) {
     contactStage: entry.contactStage,
     rawNotes: entry.rawNotes,
     campaignId: entry.campaignId,
-  });
+  }));
 
   return NextResponse.json({ entry, processing: true });
   } catch (err) {

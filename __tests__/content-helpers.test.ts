@@ -57,10 +57,10 @@ describe('generateSlug', () => {
     expect(slug).toBe('hello-world');
   });
 
-  it('handles titles with only special characters', async () => {
+  it('falls back to "untitled" for punctuation-only titles', async () => {
     vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
     const slug = await generateSlug('!!!@@@###');
-    expect(slug).toBe('');
+    expect(slug).toBe('untitled');
   });
 
   it('handles titles with unicode characters', async () => {
