@@ -35,18 +35,17 @@ Do not introduce additional dependencies without a clear reason. If a new librar
 
 ## Skill names — authoritative list
 
-The `/skills` directory contains a pinned copy of `coreyhaines31/marketingskills`. Only use skill names that actually exist in that repo. The following names do **not** exist and must never be referenced:
+The `/skills` directory contains a pinned copy of `coreyhaines31/marketingskills`. Only use skill names that actually exist in that repo. The following name does **not** exist and must never be referenced:
 
-- `vbf-messaging` — does not exist. Use `copywriting` instead.
-- `customer-research` — does not exist. Use `product-marketing-context` instead.
+- `vbf-messaging` — does not exist. Use `product-marketing-context` instead.
 
 ### Correct skill-to-mode mapping
 
 | Mode | Skills to load |
 |---|---|
-| `strategy` | `marketing-psychology`, `marketing-ideas`, `launch-strategy`, `competitor-alternatives`, `copywriting` |
+| `strategy` | `product-marketing-context`, `marketing-psychology`, `marketing-ideas`, `launch-strategy`, `competitor-alternatives` |
 | `create` | Determined by artifact type — see mapping in `lib/ai/skills.ts` |
-| `feedback` | `product-marketing-context` |
+| `feedback` | `customer-research` |
 | `analyze` | `analytics-tracking`, `ab-test-setup` |
 | `optimize` | `page-cro`, `copy-editing`, `ab-test-setup`, `signup-flow-cro`, `onboarding-cro` |
 
