@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { THEME_STORAGE_KEY, THEME_DARK_CLASS } from '@/lib/theme';
+import { THEME_STORAGE_KEY, THEME_DARK_CLASS, persistedThemeValue } from '@/lib/theme';
 
 describe('THEME_STORAGE_KEY', () => {
   it('is a non-empty string', () => {
@@ -48,22 +48,24 @@ describe('FOUC script assembly', () => {
   });
 });
 
-describe('writer/reader consistency', () => {
-  it('toggle dark token matches bootstrap reader token', () => {
-    // The bootstrap script in layout.tsx reads: if(t === THEME_DARK_CLASS)
-    // The toggle in theme-toggle.tsx writes: localStorage.setItem(KEY, THEME_DARK_CLASS)
-    // Both must use the same value so a persisted preference round-trips correctly.
-    const bootstrapReaderToken = THEME_DARK_CLASS;
-    const toggleWriterToken = THEME_DARK_CLASS;
-    expect(toggleWriterToken).toBe(bootstrapReaderToken);
+describe('persistedThemeValue', () => {
+  it('returns THEME_DARK_CLASS when dark', () => {
+    expect(persistedThemeValue(true)).toBe(THEME_DARK_CLASS);
   });
 
-  it('bootstrap script contains the exact token the toggle would persist', () => {
+  it('returns light when not dark', () => {
+    expect(persistedThemeValue(false)).toBe('light');
+  });
+});
+
+describe('writer/reader consistency', () => {
+  it('persistedThemeValue(true) matches the token the bootstrap script checks', () => {
+    // The bootstrap script reads: if(t === '${THEME_DARK_CLASS}')
+    // The toggle writes via persistedThemeValue(true).
+    // If these drift, dark mode won't restore on reload.
     const script = `(function(){try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');if(t==='${THEME_DARK_CLASS}')document.documentElement.classList.add('${THEME_DARK_CLASS}')}catch(e){}})()`;
 
-    // The script must check for the same value the toggle writes
-    expect(script).toContain(`t==='${THEME_DARK_CLASS}'`);
-    // The script must read from the same key the toggle writes to
+    expect(script).toContain(`t==='${persistedThemeValue(true)}'`);
     expect(script).toContain(`getItem('${THEME_STORAGE_KEY}')`);
   });
 });
