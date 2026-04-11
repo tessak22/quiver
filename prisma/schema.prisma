@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model ContextVersion {
+  id                    String   @id @default(uuid())
+  version               Int
+  isActive              Boolean  @default(false)
+  positioningStatement  String?
+  icpDefinition         Json?
+  messagingPillars      Json?
+  competitiveLandscape  Json?
+  customerLanguage      Json?
+  proofPoints           Json?
+  activeHypotheses      Json?
+  brandVoice            String?
+  wordsToUse            String[]
+  wordsToAvoid          String[]
+  updatedBy             String?
+  updateSource          String?
+  changeSummary         String?
+  createdAt             DateTime @default(now())
+
+  sessions     Session[]
+  artifacts    Artifact[]
+  campaigns    Campaign[]
+
+  @@map("context_versions")
+}
+
+model Campaign {
+  id                  String   @id @default(uuid())
+  name                String
+  description         String?
+  goal                String?
+  channels            String[]
+  status              String   @default("planning")
+  priority            String   @default("medium")
+  startDate           DateTime?
+  endDate             DateTime?
+  ownerId             String?
+  contextVersionId    String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  contextVersion  ContextVersion? @relation(fields: [contextVersionId], references: [id])
+  sessions        Session[]
+  artifacts       Artifact[]
+  performanceLogs PerformanceLog[]
+
+  @@map("campaigns")
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  title            String?
+  mode             String
+  skillsLoaded     String[]
+  messages         Json     @default("[]")
+  campaignId       String?
+  contextVersionId String?
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  isArchived       Boolean  @default(false)
+
+  campaign       Campaign?       @relation(fields: [campaignId], references: [id])
+  contextVersion ContextVersion? @relation(fields: [contextVersionId], references: [id])
+  artifacts      Artifact[]
+
+  @@map("sessions")
+}
+
+model Artifact {
+  id               String   @id @default(uuid())
+  title            String
+  type             String
+  content          String
+  status           String   @default("draft")
+  skillUsed        String?
+  campaignId       String
+  sessionId        String?
+  contextVersionId String?
+  version          Int      @default(1)
+  parentArtifactId String?
+  tags             String[]
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  campaign        Campaign        @relation(fields: [campaignId], references: [id])
+  session         Session?        @relation(fields: [sessionId], references: [id])
+  contextVersion  ContextVersion? @relation(fields: [contextVersionId], references: [id])
+  performanceLogs PerformanceLog[]
+
+  @@map("artifacts")
+}
+
+model PerformanceLog {
+  id                    String   @id @default(uuid())
+  artifactId            String?
+  campaignId            String
+  logType               String
+  metrics               Json?
+  qualitativeNotes      String?
+  whatWorked             String?
+  whatDidnt              String?
+  proposedContextUpdates Json?
+  contextUpdateStatus   String   @default("na")
+  recordedBy            String
+  recordedAt            DateTime @default(now())
+  periodStart           DateTime?
+  periodEnd             DateTime?
+
+  artifact  Artifact? @relation(fields: [artifactId], references: [id])
+  campaign  Campaign  @relation(fields: [campaignId], references: [id])
+
+  @@map("performance_logs")
+}
+
+model TeamMember {
+  id        String   @id
+  name      String
+  email     String   @unique
+  role      String   @default("member")
+  createdAt DateTime @default(now())
+
+  @@map("team_members")
+}
