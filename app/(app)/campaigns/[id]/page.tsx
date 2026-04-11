@@ -117,14 +117,6 @@ const PRIORITY_COLORS: Record<CampaignPriority, string> = {
   low: 'bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-400',
 };
 
-const STATUS_TRANSITIONS: Record<CampaignStatus, CampaignStatus[]> = {
-  planning: ['active', 'archived'],
-  active: ['paused', 'complete', 'archived'],
-  paused: ['active', 'complete', 'archived'],
-  complete: ['archived'],
-  archived: [],
-};
-
 const MODE_LABELS: Record<SessionMode, string> = {
   strategy: 'Strategy',
   create: 'Create',
@@ -179,6 +171,7 @@ interface EditFormState {
   description: string;
   goal: string;
   channels: string;
+  status: CampaignStatus;
   priority: CampaignPriority;
   startDate: string;
   endDate: string;
@@ -436,9 +429,6 @@ export default function CampaignDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Status transition state
-  const [updatingStatus, setUpdatingStatus] = useState(false);
-
   // Edit dialog state
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState>({
@@ -446,6 +436,7 @@ export default function CampaignDetailPage() {
     description: '',
     goal: '',
     channels: '',
+    status: 'planning',
     priority: 'medium',
     startDate: '',
     endDate: '',
@@ -453,6 +444,24 @@ export default function CampaignDetailPage() {
   });
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Team members for owner display and dropdown
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    fetch('/api/team')
+      .then((res) => res.json())
+      .then((data: { members?: Array<{ id: string; name: string }> }) =>
+        setTeamMembers(data.members ?? [])
+      )
+      .catch(() => {});
+  }, []);
+
+  function getOwnerName(ownerId: string | null): string {
+    if (!ownerId) return 'Unassigned';
+    const member = teamMembers.find((m) => m.id === ownerId);
+    return member?.name ?? ownerId;
+  }
 
   // Fetch campaign
   const fetchCampaign = useCallback(async () => {
@@ -487,6 +496,7 @@ export default function CampaignDetailPage() {
       description: campaign.description ?? '',
       goal: campaign.goal ?? '',
       channels: campaign.channels.join(', '),
+      status: campaign.status as CampaignStatus,
       priority: campaign.priority as CampaignPriority,
       startDate: campaign.startDate
         ? new Date(campaign.startDate).toISOString().split('T')[0]
@@ -498,30 +508,6 @@ export default function CampaignDetailPage() {
     });
     setEditError(null);
     setEditOpen(true);
-  }
-
-  // Status transition handler
-  async function handleStatusChange(newStatus: string) {
-    setUpdatingStatus(true);
-    try {
-      const res = await fetch(`/api/campaigns/${campaignId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (!res.ok) {
-        const data: { error?: string } = await res.json();
-        throw new Error(data.error ?? 'Failed to update status');
-      }
-
-      const data: { campaign: CampaignRecord } = await res.json();
-      setCampaign(data.campaign);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update status');
-    } finally {
-      setUpdatingStatus(false);
-    }
   }
 
   // Edit save handler
@@ -546,6 +532,7 @@ export default function CampaignDetailPage() {
             .split(',')
             .map((c) => c.trim())
             .filter(Boolean),
+          status: editForm.status,
           priority: editForm.priority,
           startDate: editForm.startDate || null,
           endDate: editForm.endDate || null,
@@ -613,7 +600,6 @@ export default function CampaignDetailPage() {
 
   const status = campaign.status as CampaignStatus;
   const priority = campaign.priority as CampaignPriority;
-  const allowedTransitions = STATUS_TRANSITIONS[status];
 
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8 max-w-5xl mx-auto">
@@ -682,33 +668,12 @@ export default function CampaignDetailPage() {
               <span>Starts {formatDate(campaign.startDate)}</span>
             )}
             {campaign.endDate && <span>Ends {formatDate(campaign.endDate)}</span>}
-            {campaign.ownerId && <span>Owner: {campaign.ownerId}</span>}
-            {!campaign.ownerId && <span className="italic">Unassigned</span>}
+            <span>{campaign.ownerId ? `Owner: ${getOwnerName(campaign.ownerId)}` : ''}</span>
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Status transition dropdown */}
-          {allowedTransitions.length > 0 && (
-            <Select
-              value=""
-              onValueChange={handleStatusChange}
-              disabled={updatingStatus}
-            >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder={updatingStatus ? 'Updating...' : 'Move to...'} />
-              </SelectTrigger>
-              <SelectContent>
-                {allowedTransitions.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
           <Button variant="outline" onClick={openEditDialog}>
             Edit
           </Button>
@@ -824,6 +789,30 @@ export default function CampaignDetailPage() {
                 }
               />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="edit-status">Status</Label>
+              <Select
+                value={editForm.status}
+                onValueChange={(value) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    status: value as CampaignStatus,
+                  }))
+                }
+              >
+                <SelectTrigger id="edit-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="planning">Planning</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="paused">Paused</SelectItem>
+                  <SelectItem value="complete">Complete</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="edit-priority">Priority</Label>
               <Select
@@ -844,6 +833,7 @@ export default function CampaignDetailPage() {
                   <SelectItem value="low">Low</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
@@ -870,14 +860,22 @@ export default function CampaignDetailPage() {
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="edit-owner">Owner (user ID)</Label>
-              <Input
+              <Label htmlFor="edit-owner">Owner</Label>
+              <select
                 id="edit-owner"
                 value={editForm.ownerId}
                 onChange={(e) =>
                   setEditForm((prev) => ({ ...prev, ownerId: e.target.value }))
                 }
-              />
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="">No owner</option>
+                {teamMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
             </div>
             {editError && (
               <p className="text-sm text-destructive">{editError}</p>

@@ -480,6 +480,24 @@ export default function ContextEditorPage() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [changeSummary, setChangeSummary] = useState('');
 
+  // Team members for resolving updatedBy IDs to names
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    fetch('/api/team')
+      .then((res) => res.json())
+      .then((data: { members?: Array<{ id: string; name: string }> }) =>
+        setTeamMembers(data.members ?? [])
+      )
+      .catch(() => {});
+  }, []);
+
+  function resolveUserName(userId: string | null): string {
+    if (!userId) return '';
+    const member = teamMembers.find((m) => m.id === userId);
+    return member?.name ?? userId.substring(0, 8) + '...';
+  }
+
   // ------ Data fetching ------
 
   const fetchActive = useCallback(async () => {
@@ -697,7 +715,7 @@ export default function ContextEditorPage() {
             <p className="text-sm text-muted-foreground mt-1">
               Version {activeVersion.version} — last updated{' '}
               {formatDate(activeVersion.createdAt)}
-              {activeVersion.updatedBy && ` by ${activeVersion.updatedBy}`}
+              {activeVersion.updatedBy && ` by ${resolveUserName(activeVersion.updatedBy)}`}
             </p>
           )}
           {!activeVersion && (
