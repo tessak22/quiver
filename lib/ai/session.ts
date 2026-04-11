@@ -263,7 +263,7 @@ function extractProductName(context: {
   // Try to extract from positioning statement
   if (context.positioningStatement) {
     // Common pattern: "ProductName is..." or "ProductName: ..."
-    const match = context.positioningStatement.match(/^([^:.—-]+)/);
+    const match = context.positioningStatement.match(/^([^:.—\-]+)/);
     if (match) return match[1].trim();
   }
   return 'your product';
