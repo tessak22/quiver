@@ -9,9 +9,9 @@ import { getSession } from '@/lib/db/sessions';
  * so it can be validated without storing anything in the database.
  */
 function generateShareToken(sessionId: string): string {
-  const secret = process.env.NEXTAUTH_SECRET;
+  const secret = process.env.QUIVER_SHARE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!secret) {
-    throw new Error('NEXTAUTH_SECRET is not configured — cannot generate share tokens');
+    throw new Error('QUIVER_SHARE_SECRET is not configured — cannot generate share tokens. Set it in your environment variables.');
   }
   return crypto
     .createHash('sha256')

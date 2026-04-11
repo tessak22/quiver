@@ -328,11 +328,11 @@ export default function ArtifactsLibraryPage() {
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-lg font-medium">No artifacts yet</p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              Start a Create session to generate marketing copy, strategies, and
+              Start a session to generate marketing copy, strategies, and
               other deliverables. Saved outputs appear here.
             </p>
             <Button asChild className="mt-4">
-              <Link href="/sessions/new">Start a Create session</Link>
+              <Link href="/sessions/new">Start a session</Link>
             </Button>
           </CardContent>
         </Card>
