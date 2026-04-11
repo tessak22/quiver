@@ -51,12 +51,12 @@ export async function synthesizePerformance(
   const notes = data.qualitativeNotes ?? 'None';
   const metricsStr = data.metrics ? JSON.stringify(data.metrics) : 'None logged';
 
-  const prompt = `You are analyzing performance results for a marketing team. Their product positioning: "${contextSummary}"
+  const prompt = `You are analyzing performance results for a marketing team. Their product positioning: ${JSON.stringify(contextSummary)}
 
 Results logged:
-- What worked: ${whatWorked}
-- What didn't: ${whatDidnt}
-- Notes: ${notes}
+- What worked: ${JSON.stringify(whatWorked)}
+- What didn't: ${JSON.stringify(whatDidnt)}
+- Notes: ${JSON.stringify(notes)}
 - Metrics: ${metricsStr}
 
 Based on these results, propose specific updates to the product marketing context. Return ONLY a JSON array:

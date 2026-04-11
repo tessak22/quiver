@@ -9,6 +9,7 @@ import {
 import { createPerformanceLog } from '@/lib/db/performance';
 import { getDefaultCampaign } from '@/lib/db/campaigns';
 import { text, error } from '../lib/response.js';
+import { CONTEXT_FIELDS } from '../lib/context-fields.js';
 
 export function registerContextTools(server: McpServer) {
   // -----------------------------------------------------------------------
@@ -134,8 +135,15 @@ export function registerContextTools(server: McpServer) {
     'Immediately apply one or more field updates to the product marketing context, creating a new context version. This takes effect right away with no approval step — use only when the user has explicitly told you what to change. For AI-inferred suggestions, use propose_context_update instead.',
     {
       updates: z
-        .record(z.unknown())
-        .describe('Field name → new value pairs to apply'),
+        .record(
+          z.enum([
+            'positioningStatement', 'icpDefinition', 'messagingPillars',
+            'competitiveLandscape', 'customerLanguage', 'proofPoints',
+            'activeHypotheses', 'brandVoice', 'wordsToUse', 'wordsToAvoid',
+          ]),
+          z.unknown()
+        )
+        .describe('Field name → new value pairs to apply (only valid context field names accepted)'),
       change_summary: z
         .string()
         .describe('What changed and why (shown in version history)'),

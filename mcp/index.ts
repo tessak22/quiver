@@ -37,4 +37,9 @@ registerWorkspaceTools(server);
 
 // Start stdio transport
 const transport = new StdioServerTransport();
-await server.connect(transport);
+try {
+  await server.connect(transport);
+} catch (err) {
+  console.error('[quiver-mcp] Failed to connect transport:', err);
+  process.exit(1);
+}

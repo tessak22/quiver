@@ -14,24 +14,37 @@ export function registerWorkspaceTools(server: McpServer) {
     'Get a summary of the current Quiver workspace — active campaigns, recent activity, close-the-loop queue count, current context version number, and pending proposal count. Call this first to orient yourself before doing other work.',
     async () => {
       try {
-        const [context, campaigns, proposals, reminders, sessions, artifacts] =
-          await Promise.all([
-            getActiveContext(),
-            prisma.campaign.count({ where: { status: 'active' } }),
-            getPendingProposals(),
-            getReminders(),
-            prisma.session.findMany({
-              where: { isArchived: false },
-              orderBy: { updatedAt: 'desc' },
-              take: 5,
-              select: { title: true, mode: true, updatedAt: true },
-            }),
-            prisma.artifact.findMany({
-              orderBy: { updatedAt: 'desc' },
-              take: 5,
-              select: { title: true, type: true, status: true },
-            }),
-          ]);
+        const [
+          contextResult,
+          campaignsResult,
+          proposalsResult,
+          remindersResult,
+          sessionsResult,
+          artifactsResult,
+        ] = await Promise.allSettled([
+          getActiveContext(),
+          prisma.campaign.count({ where: { status: 'active' } }),
+          getPendingProposals(),
+          getReminders(),
+          prisma.session.findMany({
+            where: { isArchived: false },
+            orderBy: { updatedAt: 'desc' },
+            take: 5,
+            select: { title: true, mode: true, updatedAt: true },
+          }),
+          prisma.artifact.findMany({
+            orderBy: { updatedAt: 'desc' },
+            take: 5,
+            select: { title: true, type: true, status: true },
+          }),
+        ]);
+
+        const context = contextResult.status === 'fulfilled' ? contextResult.value : null;
+        const campaigns = campaignsResult.status === 'fulfilled' ? campaignsResult.value : 0;
+        const proposals = proposalsResult.status === 'fulfilled' ? proposalsResult.value : [];
+        const reminders = remindersResult.status === 'fulfilled' ? remindersResult.value : [];
+        const sessions = sessionsResult.status === 'fulfilled' ? sessionsResult.value : [];
+        const artifacts = artifactsResult.status === 'fulfilled' ? artifactsResult.value : [];
 
         const summary = {
           context_version: context?.version ?? 0,
