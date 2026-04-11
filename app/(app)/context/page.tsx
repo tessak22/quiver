@@ -47,6 +47,21 @@ interface ContextVersionRecord {
   createdAt: string;
 }
 
+interface ProposalUpdate {
+  field: string;
+  current: string;
+  proposed: string;
+  rationale: string;
+}
+
+interface ProposalRecord {
+  id: string;
+  proposedContextUpdates: ProposalUpdate[];
+  artifact: { id: string; title: string; type: string } | null;
+  campaign: { id: string; name: string } | null;
+  recordedAt: string;
+}
+
 interface ContextFormData {
   positioningStatement: string;
   icpDefinition: string;
@@ -64,7 +79,7 @@ interface ContextFormData {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const dateFormatter = new Intl.DateTimeFormat('en-US', {
+const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
   month: 'short',
   day: 'numeric',
@@ -72,8 +87,8 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
 });
 
-function formatDate(dateStr: string): string {
-  return dateFormatter.format(new Date(dateStr));
+function formatDateTime(dateStr: string): string {
+  return dateTimeFormatter.format(new Date(dateStr));
 }
 
 function safeJsonString(value: unknown): string {
@@ -423,7 +438,7 @@ function VersionHistoryPanel({
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {formatDate(v.createdAt)}
+              {formatDateTime(v.createdAt)}
             </p>
             {v.changeSummary && (
               <p className="text-sm mt-1 line-clamp-2">
@@ -472,6 +487,10 @@ export default function ContextEditorPage() {
   const [form, setForm] = useState<ContextFormData>(EMPTY_FORM);
   const [isDirty, setIsDirty] = useState(false);
 
+  // Proposals state
+  const [proposals, setProposals] = useState<ProposalRecord[]>([]);
+  const [proposalBusy, setProposalBusy] = useState<string | null>(null);
+
   // UI state
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -479,6 +498,31 @@ export default function ContextEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [changeSummary, setChangeSummary] = useState('');
+
+  // AI Review state
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewResult, setReviewResult] = useState<{
+    issues: string[];
+    isConsistent: boolean;
+  } | null>(null);
+
+  // Team members for resolving updatedBy IDs to names
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    fetch('/api/team')
+      .then((res) => res.json())
+      .then((data: { members?: Array<{ id: string; name: string }> }) =>
+        setTeamMembers(data.members ?? [])
+      )
+      .catch(() => {});
+  }, []);
+
+  function resolveUserName(userId: string | null): string {
+    if (!userId) return '';
+    const member = teamMembers.find((m) => m.id === userId);
+    return member?.name ?? userId.substring(0, 8) + '...';
+  }
 
   // ------ Data fetching ------
 
@@ -503,14 +547,58 @@ export default function ContextEditorPage() {
     }
   }, []);
 
+  const fetchProposals = useCallback(async () => {
+    try {
+      const res = await fetch('/api/context/proposals');
+      if (res.ok) {
+        const data: { proposals: ProposalRecord[] } = await res.json();
+        setProposals(data.proposals);
+      }
+    } catch {
+      // Non-critical — proposals may just be empty
+    }
+  }, []);
+
   useEffect(() => {
     async function init() {
       setLoading(true);
-      await Promise.all([fetchActive(), fetchHistory()]);
+      await Promise.all([fetchActive(), fetchHistory(), fetchProposals()]);
       setLoading(false);
     }
     init();
-  }, [fetchActive, fetchHistory]);
+  }, [fetchActive, fetchHistory, fetchProposals]);
+
+  // ------ Proposal approve/reject ------
+
+  async function handleProposalAction(logId: string, action: 'approved' | 'rejected') {
+    setProposalBusy(logId);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/context/proposals', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logId, action }),
+      });
+
+      if (!res.ok) {
+        const data: { error?: string } = await res.json();
+        throw new Error(data.error ?? `Failed to ${action === 'approved' ? 'approve' : 'reject'} proposal`);
+      }
+
+      // Remove the card from the list
+      setProposals((prev) => prev.filter((p) => p.id !== logId));
+
+      // If approved, refresh context data since a new version was created
+      if (action === 'approved') {
+        await Promise.all([fetchActive(), fetchHistory()]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update proposal');
+    } finally {
+      setProposalBusy(null);
+    }
+  }
 
   // ------ Form helpers ------
 
@@ -538,10 +626,53 @@ export default function ContextEditorPage() {
     setIsDirty(false);
   }
 
+  // ------ AI Review ------
+
+  async function handleAIReview() {
+    setReviewing(true);
+    setReviewResult(null);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/context/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          positioningStatement: form.positioningStatement || undefined,
+          icpDefinition: form.icpDefinition || undefined,
+          messagingPillars: form.messagingPillars || undefined,
+          competitiveLandscape:
+            form.competitiveLandscape.length > 0
+              ? form.competitiveLandscape
+              : undefined,
+          customerLanguage: form.customerLanguage || undefined,
+          proofPoints: form.proofPoints || undefined,
+          activeHypotheses: form.activeHypotheses || undefined,
+          brandVoice: form.brandVoice || undefined,
+          wordsToUse: form.wordsToUse,
+          wordsToAvoid: form.wordsToAvoid,
+        }),
+      });
+
+      if (!res.ok) {
+        const data: { error?: string } = await res.json();
+        throw new Error(data.error ?? 'AI review failed');
+      }
+
+      const data: { issues: string[]; isConsistent: boolean } = await res.json();
+      setReviewResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI review failed');
+    } finally {
+      setReviewing(false);
+    }
+  }
+
   // ------ Save ------
 
   function openSaveDialog() {
     setChangeSummary('');
+    setReviewResult(null);
     setSaveDialogOpen(true);
   }
 
@@ -667,6 +798,121 @@ export default function ContextEditorPage() {
     }
   }
 
+  // ------ Export helpers ------
+
+  function exportAsMarkdown() {
+    const version = viewingVersion ?? activeVersion;
+    const versionNum = version?.version ?? 1;
+
+    const lines: string[] = [];
+    lines.push(`# Product Marketing Context — Version ${versionNum}`);
+    lines.push('');
+
+    if (form.positioningStatement) {
+      lines.push('## Positioning');
+      lines.push(form.positioningStatement);
+      lines.push('');
+    }
+
+    if (form.icpDefinition) {
+      lines.push('## Target Audience & ICP');
+      lines.push(form.icpDefinition);
+      lines.push('');
+    }
+
+    if (form.messagingPillars) {
+      lines.push('## Messaging Pillars');
+      lines.push(form.messagingPillars);
+      lines.push('');
+    }
+
+    if (form.competitiveLandscape.length > 0) {
+      lines.push('## Competitive Landscape');
+      for (const entry of form.competitiveLandscape) {
+        lines.push(`- **${entry.name}**: ${entry.notes}`);
+      }
+      lines.push('');
+    }
+
+    if (form.customerLanguage) {
+      lines.push('## Customer Language');
+      lines.push(form.customerLanguage);
+      lines.push('');
+    }
+
+    if (form.proofPoints) {
+      lines.push('## Proof Points');
+      lines.push(form.proofPoints);
+      lines.push('');
+    }
+
+    if (form.activeHypotheses) {
+      lines.push('## Active Hypotheses');
+      lines.push(form.activeHypotheses);
+      lines.push('');
+    }
+
+    if (form.brandVoice) {
+      lines.push('## Brand Voice');
+      lines.push(form.brandVoice);
+      lines.push('');
+    }
+
+    if (form.wordsToUse.length > 0) {
+      lines.push('## Words to Use');
+      lines.push(form.wordsToUse.join(', '));
+      lines.push('');
+    }
+
+    if (form.wordsToAvoid.length > 0) {
+      lines.push('## Words to Avoid');
+      lines.push(form.wordsToAvoid.join(', '));
+      lines.push('');
+    }
+
+    const content = lines.join('\n');
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `context-v${versionNum}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportAsJson() {
+    const version = viewingVersion ?? activeVersion;
+    const versionNum = version?.version ?? 1;
+
+    const payload = {
+      version: versionNum,
+      exportedAt: new Date().toISOString(),
+      positioningStatement: form.positioningStatement || null,
+      icpDefinition: form.icpDefinition || null,
+      messagingPillars: form.messagingPillars || null,
+      competitiveLandscape: form.competitiveLandscape,
+      customerLanguage: form.customerLanguage || null,
+      proofPoints: form.proofPoints || null,
+      activeHypotheses: form.activeHypotheses || null,
+      brandVoice: form.brandVoice || null,
+      wordsToUse: form.wordsToUse,
+      wordsToAvoid: form.wordsToAvoid,
+    };
+
+    const content = JSON.stringify(payload, null, 2);
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `context-v${versionNum}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   // ------ Render helpers ------
 
   const isViewingHistorical =
@@ -696,8 +942,8 @@ export default function ContextEditorPage() {
           {activeVersion && (
             <p className="text-sm text-muted-foreground mt-1">
               Version {activeVersion.version} — last updated{' '}
-              {formatDate(activeVersion.createdAt)}
-              {activeVersion.updatedBy && ` by ${activeVersion.updatedBy}`}
+              {formatDateTime(activeVersion.createdAt)}
+              {activeVersion.updatedBy && ` by ${resolveUserName(activeVersion.updatedBy)}`}
             </p>
           )}
           {!activeVersion && (
@@ -727,6 +973,99 @@ export default function ContextEditorPage() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Pending Proposals */}
+      {proposals.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">
+            Pending Proposals{' '}
+            <Badge variant="secondary" className="ml-1.5">
+              {proposals.length}
+            </Badge>
+          </h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {proposals.map((proposal) => {
+              const updates = Array.isArray(proposal.proposedContextUpdates)
+                ? proposal.proposedContextUpdates
+                : [];
+              const source = proposal.artifact?.title ?? proposal.campaign?.name ?? 'Unknown source';
+              const isBusy = proposalBusy === proposal.id;
+
+              return (
+                <Card key={proposal.id}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-sm font-medium">
+                        {source}
+                      </CardTitle>
+                      <Badge variant="outline" className="shrink-0 text-xs">
+                        {updates.length} {updates.length === 1 ? 'change' : 'changes'}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {updates.map((update, i) => (
+                      <div key={i} className="space-y-1.5 text-sm">
+                        <p className="font-medium capitalize">
+                          {update.field.replace(/([A-Z])/g, ' $1').trim()}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded bg-red-50 dark:bg-red-950/20 p-2">
+                            <span className="block text-muted-foreground mb-0.5">
+                              Current
+                            </span>
+                            <span className="line-clamp-3">
+                              {typeof update.current === 'string'
+                                ? update.current || '(empty)'
+                                : JSON.stringify(update.current)}
+                            </span>
+                          </div>
+                          <div className="rounded bg-green-50 dark:bg-green-950/20 p-2">
+                            <span className="block text-muted-foreground mb-0.5">
+                              Proposed
+                            </span>
+                            <span className="line-clamp-3">
+                              {typeof update.proposed === 'string'
+                                ? update.proposed || '(empty)'
+                                : JSON.stringify(update.proposed)}
+                            </span>
+                          </div>
+                        </div>
+                        {update.rationale && (
+                          <p className="text-xs text-muted-foreground italic">
+                            {update.rationale}
+                          </p>
+                        )}
+                        {i < updates.length - 1 && <Separator />}
+                      </div>
+                    ))}
+
+                    <Separator />
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isBusy}
+                        onClick={() => handleProposalAction(proposal.id, 'rejected')}
+                      >
+                        {isBusy ? 'Processing...' : 'Reject'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={isBusy}
+                        onClick={() => handleProposalAction(proposal.id, 'approved')}
+                      >
+                        {isBusy ? 'Processing...' : 'Approve'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -988,9 +1327,21 @@ export default function ContextEditorPage() {
                 </Card>
               </div>
 
-              {/* Save Button */}
-              {!isViewingHistorical && (
-                <div className="flex justify-end">
+              {/* Save & Export Buttons */}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={exportAsMarkdown}
+                >
+                  Export as Markdown
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={exportAsJson}
+                >
+                  Export as JSON
+                </Button>
+                {!isViewingHistorical && (
                   <Button
                     size="lg"
                     disabled={!isDirty || saving}
@@ -998,8 +1349,8 @@ export default function ContextEditorPage() {
                   >
                     {saving ? 'Saving...' : 'Save New Version'}
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Sidebar — Completeness */}
@@ -1043,7 +1394,7 @@ export default function ContextEditorPage() {
 
       {/* Save Dialog */}
       <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
             <DialogTitle>Save Context Version</DialogTitle>
             <DialogDescription>
@@ -1067,17 +1418,49 @@ export default function ContextEditorPage() {
               }}
             />
           </div>
-          <DialogFooter>
+
+          {/* AI Review Result */}
+          {reviewResult && (
+            <div
+              className={`rounded-md border p-3 text-sm space-y-2 ${
+                reviewResult.isConsistent
+                  ? 'border-green-500/50 bg-green-50 dark:bg-green-950/20'
+                  : 'border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20'
+              }`}
+            >
+              <p className="font-medium">
+                {reviewResult.isConsistent
+                  ? 'All consistent — no issues found.'
+                  : `${reviewResult.issues.length} issue${reviewResult.issues.length !== 1 ? 's' : ''} found:`}
+              </p>
+              {reviewResult.issues.length > 0 && (
+                <ul className="list-disc pl-5 space-y-1">
+                  {reviewResult.issues.map((issue, i) => (
+                    <li key={i}>{issue}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
               onClick={() => setSaveDialogOpen(false)}
-              disabled={saving}
+              disabled={saving || reviewing}
             >
               Cancel
             </Button>
             <Button
+              variant="secondary"
+              onClick={handleAIReview}
+              disabled={saving || reviewing}
+            >
+              {reviewing ? 'Reviewing...' : 'AI Review'}
+            </Button>
+            <Button
               onClick={handleSave}
-              disabled={!changeSummary.trim() || saving}
+              disabled={!changeSummary.trim() || saving || reviewing}
             >
               {saving ? 'Saving...' : 'Save Version'}
             </Button>

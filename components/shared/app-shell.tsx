@@ -3,25 +3,37 @@
 // Client component: app shell with persistent sidebar navigation,
 // header with context indicator, and user menu.
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  LayoutDashboard,
+  MessageSquare,
+  FileText,
+  FolderKanban,
+  BookOpen,
+  BarChart3,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  LogOut,
+} from 'lucide-react';
 
 interface AppShellProps {
   user: { name: string; role: string };
   contextVersion: number | null;
   pendingProposals: number;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/dashboard', icon: '◻' },
-  { label: 'Sessions', href: '/sessions', icon: '◎' },
-  { label: 'Artifacts', href: '/artifacts', icon: '◈' },
-  { label: 'Campaigns', href: '/campaigns', icon: '◇' },
-  { label: 'Context', href: '/context', icon: '◉' },
-  { label: 'Performance', href: '/performance', icon: '◊' },
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Sessions', href: '/sessions', icon: MessageSquare },
+  { label: 'Artifacts', href: '/artifacts', icon: FileText },
+  { label: 'Campaigns', href: '/campaigns', icon: FolderKanban },
+  { label: 'Context', href: '/context', icon: BookOpen },
+  { label: 'Performance', href: '/performance', icon: BarChart3 },
 ];
 
 export function AppShell({ user, contextVersion, pendingProposals, children }: AppShellProps) {
@@ -51,25 +63,28 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
 
           {/* Navigation */}
           <nav className="flex-1 space-y-1 p-2">
-            {NAV_ITEMS.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
-                  isActive(item.href)
-                    ? 'bg-primary/10 font-medium text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <span className="text-base">{item.icon}</span>
-                {item.label}
-                {item.label === 'Context' && pendingProposals > 0 && (
-                  <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">
-                    {pendingProposals}
-                  </Badge>
-                )}
-              </a>
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+                    isActive(item.href)
+                      ? 'bg-primary/10 font-medium text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                  {item.label === 'Context' && pendingProposals > 0 && (
+                    <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">
+                      {pendingProposals}
+                    </Badge>
+                  )}
+                </a>
+              );
+            })}
           </nav>
 
           {/* User */}
@@ -83,13 +98,14 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
                 <p className="text-xs text-muted-foreground">{user.role}</p>
               </div>
             </div>
-            <div className="mt-2">
-              <a href="/settings" className="text-xs text-muted-foreground hover:text-foreground">
+            <div className="mt-2 flex items-center gap-3">
+              <a href="/settings" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                <Settings className="h-3 w-3" />
                 Settings
               </a>
-              <span className="mx-2 text-muted-foreground">·</span>
               <form action="/api/auth/logout" method="POST" className="inline">
-                <button type="submit" className="text-xs text-muted-foreground hover:text-foreground">
+                <button type="submit" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                  <LogOut className="h-3 w-3" />
                   Sign out
                 </button>
               </form>
@@ -108,7 +124,11 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="h-8 w-8"
           >
-            <span className="text-lg">{isSidebarOpen ? '◁' : '▷'}</span>
+            {isSidebarOpen ? (
+              <PanelLeftClose className="h-4 w-4" />
+            ) : (
+              <PanelLeftOpen className="h-4 w-4" />
+            )}
           </Button>
 
           <div className="flex items-center gap-3">

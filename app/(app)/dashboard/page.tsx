@@ -187,7 +187,7 @@ function QuickStartBlock() {
         </Link>
         <div className="flex flex-wrap gap-2">
           {SESSION_MODES.map((mode) => (
-            <Link key={mode} href={`/sessions/new?mode=${mode}`}>
+            <Link key={mode} href={`/sessions/new-chat?mode=${mode}`}>
               <span
                 className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold cursor-pointer transition-opacity hover:opacity-80 ${MODE_COLORS[mode]}`}
               >
@@ -483,9 +483,14 @@ function CloseTheLoopBlock({
                         {urgency.label}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Due {formatShortDate(reminder.recordedAt)}
-                    </p>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-xs text-muted-foreground">
+                        Due {formatShortDate(reminder.recordedAt)}
+                      </p>
+                      <span className="inline-flex items-center rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground">
+                        Log Results
+                      </span>
+                    </div>
                   </div>
                 </Link>
               );

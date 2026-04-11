@@ -117,17 +117,23 @@ const INITIAL_FORM: CreateFormState = {
 // Campaign Card component
 // ---------------------------------------------------------------------------
 
-function CampaignCard({ campaign, compact }: { campaign: CampaignRecord; compact?: boolean }) {
+function CampaignCard({
+  campaign,
+  compact,
+}: {
+  campaign: CampaignRecord;
+  compact?: boolean;
+}) {
   const status = campaign.status as CampaignStatus;
   const isUnassigned = !campaign.ownerId;
 
   return (
-    <Link href={`/campaigns/${campaign.id}`} className="block">
-      <Card
-        className={`transition-colors hover:bg-muted/50 ${
-          isUnassigned ? 'border-dashed opacity-75' : ''
-        }`}
-      >
+    <Card
+      className={`transition-colors hover:bg-muted/50 ${
+        isUnassigned ? 'border-dashed opacity-75' : ''
+      }`}
+    >
+      <Link href={`/campaigns/${campaign.id}`} className="block">
         <CardContent className={compact ? 'p-3' : 'py-4 px-5'}>
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
@@ -175,8 +181,9 @@ function CampaignCard({ campaign, compact }: { campaign: CampaignRecord; compact
             )}
           </div>
         </CardContent>
-      </Card>
-    </Link>
+      </Link>
+
+    </Card>
   );
 }
 
@@ -260,6 +267,25 @@ export default function CampaignsPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // AI Assist state
+  const [aiAssisting, setAiAssisting] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{
+    metrics: string[];
+    notes: string;
+  } | null>(null);
+
+  // Team members for owner dropdown
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    fetch('/api/team')
+      .then((res) => res.json())
+      .then((data: { members?: Array<{ id: string; name: string }> }) =>
+        setTeamMembers(data.members ?? [])
+      )
+      .catch(() => {});
+  }, []);
+
   // Fetch campaigns
   const fetchCampaigns = useCallback(async () => {
     setLoading(true);
@@ -287,6 +313,54 @@ export default function CampaignsPage() {
   useEffect(() => {
     fetchCampaigns();
   }, [fetchCampaigns]);
+
+  // AI Assist handler
+  async function handleAIAssist() {
+    if (!createForm.goal.trim()) {
+      setCreateError('Enter a campaign goal first so AI can make suggestions.');
+      return;
+    }
+
+    setAiAssisting(true);
+    setCreateError(null);
+    setAiSuggestions(null);
+
+    try {
+      const res = await fetch('/api/campaigns/ai-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          goal: createForm.goal.trim(),
+          description: createForm.description.trim() || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const data: { error?: string } = await res.json();
+        throw new Error(data.error ?? 'AI assist failed');
+      }
+
+      const data: { channels: string[]; metrics: string[]; notes: string } = await res.json();
+
+      // Pre-fill channels field if the AI suggested channels
+      if (data.channels.length > 0) {
+        setCreateForm((prev) => ({
+          ...prev,
+          channels: data.channels.join(', '),
+        }));
+      }
+
+      // Show metrics and notes as suggestions
+      setAiSuggestions({
+        metrics: data.metrics,
+        notes: data.notes,
+      });
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'AI assist failed');
+    } finally {
+      setAiAssisting(false);
+    }
+  }
 
   // Create campaign handler
   async function handleCreate() {
@@ -322,6 +396,7 @@ export default function CampaignsPage() {
       }
 
       setCreateForm(INITIAL_FORM);
+      setAiSuggestions(null);
       setCreateOpen(false);
       fetchCampaigns();
     } catch (err) {
@@ -377,7 +452,18 @@ export default function CampaignsPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="campaign-goal">Goal</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="campaign-goal">Goal</Label>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={aiAssisting || creating}
+                    onClick={handleAIAssist}
+                  >
+                    {aiAssisting ? 'Thinking...' : 'AI Assist'}
+                  </Button>
+                </div>
                 <Textarea
                   id="campaign-goal"
                   placeholder="What is the main objective of this campaign?"
@@ -399,6 +485,27 @@ export default function CampaignsPage() {
                   }
                 />
               </div>
+              {/* AI Suggestions */}
+              {aiSuggestions && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2 text-sm">
+                  {aiSuggestions.metrics.length > 0 && (
+                    <div>
+                      <p className="font-medium">Suggested metrics:</p>
+                      <ul className="list-disc pl-5 mt-1 space-y-0.5 text-muted-foreground">
+                        {aiSuggestions.metrics.map((m, i) => (
+                          <li key={i}>{m}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiSuggestions.notes && (
+                    <div>
+                      <p className="font-medium">Strategic notes:</p>
+                      <p className="text-muted-foreground mt-0.5">{aiSuggestions.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="campaign-start">Start Date</Label>
@@ -424,15 +531,22 @@ export default function CampaignsPage() {
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="campaign-owner">Owner (user ID)</Label>
-                <Input
+                <Label htmlFor="campaign-owner">Owner</Label>
+                <select
                   id="campaign-owner"
-                  placeholder="Optional owner user ID"
                   value={createForm.ownerId}
                   onChange={(e) =>
                     setCreateForm((prev) => ({ ...prev, ownerId: e.target.value }))
                   }
-                />
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="">No owner</option>
+                  {teamMembers.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               {createError && (
                 <p className="text-sm text-destructive">{createError}</p>
