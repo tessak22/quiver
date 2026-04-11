@@ -311,6 +311,13 @@ export async function updateDistribution(
   });
 }
 
+export async function getDistribution(id: string) {
+  return prisma.contentDistribution.findUnique({
+    where: { id },
+    select: { id: true, contentPieceId: true },
+  });
+}
+
 export async function deleteDistribution(id: string) {
   return prisma.contentDistribution.delete({
     where: { id },
