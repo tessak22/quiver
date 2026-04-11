@@ -12,9 +12,8 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createPerformanceLog, getPerformanceLogs, updatePerformanceLog } from '@/lib/db/performance';
-import { getActiveContext } from '@/lib/db/context';
-import { sendMessage } from '@/lib/ai/client';
+import { createPerformanceLog, getPerformanceLogs } from '@/lib/db/performance';
+import { synthesizePerformance } from '@/lib/ai/synthesis-core';
 
 export async function GET(request: Request) {
   const supabase = createClient();
@@ -70,7 +69,12 @@ export async function POST(request: Request) {
   });
 
   // Trigger AI synthesis in background (non-blocking)
-  synthesizePerformance(log.id, body).catch(() => {
+  synthesizePerformance(log.id, {
+    whatWorked: typeof body.whatWorked === 'string' ? body.whatWorked : undefined,
+    whatDidnt: typeof body.whatDidnt === 'string' ? body.whatDidnt : undefined,
+    qualitativeNotes: typeof body.qualitativeNotes === 'string' ? body.qualitativeNotes : undefined,
+    metrics: isRecord(body.metrics) ? body.metrics : undefined,
+  }).catch(() => {
     // Synthesis is best-effort, don't fail the log entry
   });
 
@@ -79,58 +83,4 @@ export async function POST(request: Request) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-async function synthesizePerformance(
-  logId: string,
-  data: Record<string, unknown>
-) {
-  // Get active context for synthesis
-  const activeContext = await getActiveContext();
-
-  const contextSummary = activeContext?.positioningStatement || 'No active context';
-
-  const whatWorked = typeof data.whatWorked === 'string' ? data.whatWorked : 'Not specified';
-  const whatDidnt = typeof data.whatDidnt === 'string' ? data.whatDidnt : 'Not specified';
-  const notes = typeof data.qualitativeNotes === 'string' ? data.qualitativeNotes : 'None';
-  const metricsStr = isRecord(data.metrics) ? JSON.stringify(data.metrics) : 'None logged';
-
-  const prompt = `You are analyzing performance results for a marketing team. Their product positioning: "${contextSummary}"
-
-Results logged:
-- What worked: ${whatWorked}
-- What didn't: ${whatDidnt}
-- Notes: ${notes}
-- Metrics: ${metricsStr}
-
-Based on these results, propose specific updates to the product marketing context. Return ONLY a JSON array:
-[{"field": "fieldName", "current": "current value or unknown", "proposed": "proposed new value", "rationale": "why this change"}]
-
-Fields you can propose changes to: positioningStatement, icpDefinition, messagingPillars, competitiveLandscape, customerLanguage, proofPoints, activeHypotheses, brandVoice, wordsToUse, wordsToAvoid
-
-Only propose changes that are directly supported by the results. If no changes are warranted, return an empty array [].`;
-
-  const result = await sendMessage({
-    system: 'You are a marketing data analyst. Always return valid JSON arrays only.',
-    messages: [{ role: 'user', content: prompt }],
-    maxTokens: 2048,
-  });
-
-  if (result.error) return;
-
-  try {
-    // Use non-greedy match to capture the first JSON array only
-    const jsonMatch = result.content.match(/\[[\s\S]*?\]/);
-    if (!jsonMatch) return;
-
-    const proposals: unknown = JSON.parse(jsonMatch[0]);
-    if (Array.isArray(proposals) && proposals.length > 0) {
-      await updatePerformanceLog(logId, {
-        proposedContextUpdates: proposals,
-        contextUpdateStatus: 'pending',
-      });
-    }
-  } catch {
-    // Parse failure — synthesis is best-effort
-  }
 }

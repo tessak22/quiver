@@ -95,6 +95,18 @@ Do not pause for: UI components, API routes, lib utilities, types, bug fixes, de
 
 ---
 
+## MCP server
+
+The `mcp/` directory contains a Model Context Protocol server that exposes Quiver's full functionality as tools for external AI clients. Key points:
+
+- **Two context update tools exist:** `propose_context_update` (creates a pending proposal for human review — use by default) and `apply_context_update` (applies immediately via `applyContextUpdates()` from `lib/db/context.ts` — use only when the human has explicitly stated the change). Both are required; omitting `apply_context_update` would make the MCP less capable than the UI.
+- **Synthesis:** `lib/ai/synthesis-core.ts` extracts the AI performance synthesis logic for shared use by both the Next.js API and MCP server. Both import from this module.
+- **Transport:** stdio. No HTTP, no port, no auth token. `DATABASE_URL` is the credential.
+- **Build:** `cd mcp && npm install && npx prisma generate && npm run build` — produces `mcp/dist/index.js`.
+- **`recordedBy`:** MCP actions use the string `'mcp'` as the user identifier for all writes.
+
+---
+
 ## GitHub issues
 
 All work is tracked in GitHub issues at `github.com/tessak22/quiver/issues`. Each issue has full acceptance criteria. Reference the issue number in every commit. Work through issues in number order unless there is a clear dependency reason to do otherwise.
