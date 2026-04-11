@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const PUBLIC_ROUTES = ['/login', '/invite', '/shared'];
 
+
 // Routes that require auth but NOT team membership (pre-membership flows)
 const MEMBERSHIP_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding'];
 
@@ -37,8 +38,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith(route)
   );
 
-  // Unauthenticated users can only access public routes
-  if (!user && !isPublicRoute) {
+  // Share API endpoints validate via token, not auth session
+  const isShareApi = pathname.match(/^\/api\/sessions\/[^/]+\/share/) !== null;
+
+  // Unauthenticated users can only access public routes (and share API)
+  if (!user && !isPublicRoute && !isShareApi) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
@@ -58,10 +62,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith(route)
   );
 
-  if (user && !isPublicRoute && !isMembershipExempt) {
+  if (user && !isPublicRoute && !isMembershipExempt && !isShareApi) {
+    // Cookie value is the user ID — only valid for this specific user
     const membershipCached = request.cookies.get('quiver_member')?.value;
 
-    if (!membershipCached) {
+    if (membershipCached !== user.id) {
       const { data: member } = await supabase
         .from('team_members')
         .select('id')
@@ -83,7 +88,7 @@ export async function middleware(request: NextRequest) {
       }
 
       // Cache membership for 5 minutes to avoid DB query on every request
-      supabaseResponse.cookies.set('quiver_member', 'true', {
+      supabaseResponse.cookies.set('quiver_member', user.id, {
         path: '/',
         maxAge: 60 * 5,
         httpOnly: true,
