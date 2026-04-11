@@ -94,6 +94,98 @@ Full implementation: [`lib/ai/session.ts`](lib/ai/session.ts)
 
 ---
 
+## MCP Server
+
+Quiver ships with a built-in [Model Context Protocol](https://modelcontextprotocol.io) server that exposes all functionality as tools. This lets you use a more capable Claude model (Claude Desktop, Cursor, Windsurf, or claude.ai with MCP connectors) to interact with your Quiver data directly — log performance, create campaigns, save artifacts, update context — without switching to the browser.
+
+Each team that deploys Quiver runs their own MCP server pointed at their own database.
+
+### Build
+
+```bash
+cd mcp
+npm install
+npx prisma generate
+npm run build
+```
+
+### Claude Desktop
+
+Add this to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "quiver": {
+      "command": "node",
+      "args": ["/absolute/path/to/quiver/mcp/dist/index.js"],
+      "env": {
+        "DATABASE_URL": "your-supabase-connection-string",
+        "ANTHROPIC_API_KEY": "your-anthropic-api-key"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+
+Add this to your Cursor MCP settings (`.cursor/mcp.json` in your project, or global settings):
+
+```json
+{
+  "mcpServers": {
+    "quiver": {
+      "command": "node",
+      "args": ["/absolute/path/to/quiver/mcp/dist/index.js"],
+      "env": {
+        "DATABASE_URL": "your-supabase-connection-string",
+        "ANTHROPIC_API_KEY": "your-anthropic-api-key"
+      }
+    }
+  }
+}
+```
+
+### claude.ai with MCP connectors
+
+The default transport is stdio (local). To use with claude.ai or other remote MCP clients, you would need to expose the server via a lightweight HTTP wrapper. The stdio transport is the recommended default for local use.
+
+### Available Tools
+
+| Tool | Description |
+|---|---|
+| `get_dashboard_summary` | Workspace overview — call first to orient |
+| `get_context` | Active product marketing context |
+| `get_context_history` | Context version history |
+| `propose_context_update` | Propose context changes (pending human review) |
+| `apply_context_update` | Apply context changes immediately (human-directed only) |
+| `restore_context_version` | Restore a previous context version |
+| `list_campaigns` | List campaigns by status |
+| `get_campaign` | Campaign details by ID or name |
+| `create_campaign` | Create a new campaign |
+| `update_campaign` | Update campaign fields |
+| `update_campaign_status` | Change campaign status |
+| `list_artifacts` | List artifacts with filters |
+| `get_artifact` | Full artifact content by ID or title |
+| `save_artifact` | Save a new artifact |
+| `update_artifact` | Update artifact (creates new version) |
+| `update_artifact_status` | Change artifact status (live triggers reminder) |
+| `log_performance` | Log results with AI synthesis |
+| `get_performance_log` | Performance log entries |
+| `get_close_the_loop_queue` | Artifacts awaiting results |
+| `list_proposals` | Pending context update proposals |
+| `action_proposal` | Approve or reject a proposal |
+| `list_sessions` | Recent AI sessions |
+| `get_session` | Full session with messages |
+
+### `propose_context_update` vs `apply_context_update`
+
+- **`propose_context_update`** (default, safe): Creates a pending proposal visible in the Quiver UI. Use when AI is suggesting changes based on analysis.
+- **`apply_context_update`** (immediate): Applies changes instantly with no review step. Use only when the human has explicitly stated the exact change they want.
+
+---
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local dev setup, branch naming, how to add a new skill, and the PR checklist.
