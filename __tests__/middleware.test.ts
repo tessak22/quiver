@@ -1,0 +1,428 @@
+/**
+ * Tests for middleware.ts — Route-gating logic
+ *
+ * The middleware function is tightly coupled to Next.js and Supabase, so we
+ * re-implement the core routing decision logic as a pure function and test it
+ * here. This covers the key scenarios from issue #53: ensuring authenticated
+ * non-members are never trapped in a dead-end loop, can always log out, and
+ * are routed to the right page based on workspace state.
+ */
+
+import { describe, it, expect } from 'vitest';
+
+// ---------------------------------------------------------------------------
+// Constants — mirrored from middleware.ts
+// ---------------------------------------------------------------------------
+
+const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public'];
+
+const MEMBERSHIP_EXEMPT_ROUTES = [
+  '/setup',
+  '/api/team/accept-invite',
+  '/api/onboarding',
+  '/api/auth/logout',
+  '/access-denied',
+];
+
+// Onboarding-exempt routes are a subset — /access-denied is intentionally
+// excluded so the onboarding gate still covers it.
+const ONBOARDING_EXEMPT_ROUTES = [
+  '/setup',
+  '/api/team/accept-invite',
+  '/api/onboarding',
+  '/api/auth/logout',
+];
+
+// ---------------------------------------------------------------------------
+// Re-implement routing decision logic from middleware
+// ---------------------------------------------------------------------------
+
+interface RoutingContext {
+  pathname: string;
+  user: { id: string } | null;
+  isMember: boolean;
+  membershipCached: boolean;
+  onboardingComplete: boolean;
+  activeContextExists: boolean;
+  contextQueryFailed?: boolean;
+}
+
+type RoutingDecision =
+  | { action: 'redirect'; to: string }
+  | { action: 'json-error'; error: string; status: number }
+  | { action: 'pass' };
+
+function resolveRoute(ctx: RoutingContext): RoutingDecision {
+  const { pathname, user } = ctx;
+
+  const isPublicRoute = PUBLIC_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
+  const isShareApi = /^\/api\/sessions\/[^/]+\/share/.test(pathname);
+
+  // Unauthenticated: only public routes and share API
+  if (!user && !isPublicRoute && !isShareApi) {
+    return { action: 'redirect', to: '/login' };
+  }
+
+  // Authenticated on login → dashboard
+  if (user && pathname === '/login') {
+    return { action: 'redirect', to: '/dashboard' };
+  }
+
+  const isMembershipExempt = MEMBERSHIP_EXEMPT_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
+
+  // Membership check for non-public, non-exempt, non-share routes
+  if (user && !isPublicRoute && !isMembershipExempt && !isShareApi) {
+    if (!ctx.membershipCached && !ctx.isMember) {
+      if (pathname.startsWith('/api/')) {
+        return { action: 'json-error', error: 'Not a team member', status: 403 };
+      }
+      // Default to /access-denied on query failure to avoid lockout path
+      const safeDefault = ctx.activeContextExists || ctx.contextQueryFailed;
+      return {
+        action: 'redirect',
+        to: safeDefault ? '/access-denied' : '/setup',
+      };
+    }
+  }
+
+  // Onboarding check — uses ONBOARDING_EXEMPT_ROUTES (not membership list)
+  const isOnboardingExempt = ONBOARDING_EXEMPT_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
+
+  if (user && !isPublicRoute && !isOnboardingExempt && !isShareApi) {
+    // On query failure, fall through rather than redirecting to /setup
+    if (!ctx.onboardingComplete && !ctx.activeContextExists && !ctx.contextQueryFailed) {
+      if (pathname.startsWith('/api/')) {
+        return { action: 'json-error', error: 'Onboarding not complete', status: 403 };
+      }
+      return { action: 'redirect', to: '/setup' };
+    }
+  }
+
+  return { action: 'pass' };
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('Route classification', () => {
+  it('/api/auth/logout is membership-exempt', () => {
+    expect(
+      MEMBERSHIP_EXEMPT_ROUTES.some((r) => '/api/auth/logout'.startsWith(r))
+    ).toBe(true);
+  });
+
+  it('/access-denied is membership-exempt', () => {
+    expect(
+      MEMBERSHIP_EXEMPT_ROUTES.some((r) => '/access-denied'.startsWith(r))
+    ).toBe(true);
+  });
+
+  it('/login is a public route', () => {
+    expect(
+      PUBLIC_ROUTES.some((r) => '/login'.startsWith(r))
+    ).toBe(true);
+  });
+
+  it('/access-denied is NOT onboarding-exempt', () => {
+    expect(
+      ONBOARDING_EXEMPT_ROUTES.some((r) => '/access-denied'.startsWith(r))
+    ).toBe(false);
+  });
+
+  it('/api/auth/logout IS onboarding-exempt', () => {
+    expect(
+      ONBOARDING_EXEMPT_ROUTES.some((r) => '/api/auth/logout'.startsWith(r))
+    ).toBe(true);
+  });
+
+  it('/dashboard is not public or membership-exempt', () => {
+    expect(
+      PUBLIC_ROUTES.some((r) => '/dashboard'.startsWith(r))
+    ).toBe(false);
+    expect(
+      MEMBERSHIP_EXEMPT_ROUTES.some((r) => '/dashboard'.startsWith(r))
+    ).toBe(false);
+  });
+});
+
+describe('Unauthenticated users', () => {
+  it('redirects to /login for protected routes', () => {
+    const result = resolveRoute({
+      pathname: '/dashboard',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/login' });
+  });
+
+  it('allows access to public routes', () => {
+    const result = resolveRoute({
+      pathname: '/login',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('allows access to share API', () => {
+    const result = resolveRoute({
+      pathname: '/api/sessions/abc123/share',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+});
+
+describe('Authenticated non-member (issue #53 lockout)', () => {
+  const nonMemberBase: RoutingContext = {
+    pathname: '/dashboard',
+    user: { id: 'user-1' },
+    isMember: false,
+    membershipCached: false,
+    onboardingComplete: false,
+    activeContextExists: true,
+  };
+
+  it('redirects to /access-denied when context exists (not /setup dead-end)', () => {
+    const result = resolveRoute(nonMemberBase);
+    expect(result).toEqual({ action: 'redirect', to: '/access-denied' });
+  });
+
+  it('redirects to /setup when no context exists (first-run onboarding)', () => {
+    const result = resolveRoute({
+      ...nonMemberBase,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/setup' });
+  });
+
+  it('can access /api/auth/logout (membership-exempt)', () => {
+    const result = resolveRoute({
+      ...nonMemberBase,
+      pathname: '/api/auth/logout',
+    });
+    // /api/auth/logout is membership-exempt, so it should pass through
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('can access /access-denied page (membership-exempt)', () => {
+    const result = resolveRoute({
+      ...nonMemberBase,
+      pathname: '/access-denied',
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('redirects to /access-denied when context query fails (safe default)', () => {
+    const result = resolveRoute({
+      ...nonMemberBase,
+      activeContextExists: false,
+      contextQueryFailed: true,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/access-denied' });
+  });
+
+  it('returns 403 JSON for non-exempt API routes', () => {
+    const result = resolveRoute({
+      ...nonMemberBase,
+      pathname: '/api/sessions',
+    });
+    expect(result).toEqual({
+      action: 'json-error',
+      error: 'Not a team member',
+      status: 403,
+    });
+  });
+});
+
+describe('Authenticated member', () => {
+  it('allows access to dashboard when onboarding is complete', () => {
+    const result = resolveRoute({
+      pathname: '/dashboard',
+      user: { id: 'user-1' },
+      isMember: true,
+      membershipCached: false,
+      onboardingComplete: true,
+      activeContextExists: true,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('allows access when membership is cached', () => {
+    const result = resolveRoute({
+      pathname: '/dashboard',
+      user: { id: 'user-1' },
+      isMember: false,
+      membershipCached: true,
+      onboardingComplete: true,
+      activeContextExists: true,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('redirects to /setup when onboarding is not complete and no context', () => {
+    const result = resolveRoute({
+      pathname: '/dashboard',
+      user: { id: 'user-1' },
+      isMember: true,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/setup' });
+  });
+
+  it('redirects authenticated user away from /login to /dashboard', () => {
+    const result = resolveRoute({
+      pathname: '/login',
+      user: { id: 'user-1' },
+      isMember: true,
+      membershipCached: false,
+      onboardingComplete: true,
+      activeContextExists: true,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/dashboard' });
+  });
+});
+
+describe('Onboarding gate edge cases', () => {
+  it('passes through when member has no onboarding cookie but context exists', () => {
+    // Middleware sets the quiver_onboarded cookie and continues — no redirect
+    const result = resolveRoute({
+      pathname: '/dashboard',
+      user: { id: 'user-1' },
+      isMember: true,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: true,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('returns 403 JSON for API routes when onboarding is incomplete', () => {
+    const result = resolveRoute({
+      pathname: '/api/sessions',
+      user: { id: 'user-1' },
+      isMember: true,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({
+      action: 'json-error',
+      error: 'Onboarding not complete',
+      status: 403,
+    });
+  });
+
+  it('onboarding gate falls through on context query failure (no dead-end redirect)', () => {
+    const result = resolveRoute({
+      pathname: '/dashboard',
+      user: { id: 'user-1' },
+      isMember: true,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: true,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('/access-denied is subject to onboarding gate (redirects to /setup when no context)', () => {
+    // A member navigating directly to /access-denied before onboarding is
+    // complete should still be caught by the onboarding gate.
+    const result = resolveRoute({
+      pathname: '/access-denied',
+      user: { id: 'user-1' },
+      isMember: true,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/setup' });
+  });
+
+  it('non-member API routes return 403 regardless of context state', () => {
+    const result = resolveRoute({
+      pathname: '/api/sessions',
+      user: { id: 'user-1' },
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({
+      action: 'json-error',
+      error: 'Not a team member',
+      status: 403,
+    });
+  });
+});
+
+describe('Unauthenticated on exempt routes', () => {
+  it('redirects to /login even for membership-exempt routes when not authenticated', () => {
+    const result = resolveRoute({
+      pathname: '/access-denied',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/login' });
+  });
+
+  it('redirects to /login for /setup when not authenticated', () => {
+    const result = resolveRoute({
+      pathname: '/setup',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/login' });
+  });
+});
+
+describe('Membership-exempt routes', () => {
+  const nonMember: Omit<RoutingContext, 'pathname'> = {
+    user: { id: 'user-1' },
+    isMember: false,
+    membershipCached: false,
+    onboardingComplete: false,
+    activeContextExists: true,
+  };
+
+  it('/setup is accessible without membership', () => {
+    const result = resolveRoute({ ...nonMember, pathname: '/setup' });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('/api/team/accept-invite is accessible without membership', () => {
+    const result = resolveRoute({ ...nonMember, pathname: '/api/team/accept-invite' });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('/api/onboarding/complete is accessible without membership', () => {
+    const result = resolveRoute({ ...nonMember, pathname: '/api/onboarding/complete' });
+    expect(result).toEqual({ action: 'pass' });
+  });
+});
