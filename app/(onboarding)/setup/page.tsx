@@ -67,26 +67,33 @@ export default function SetupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
   const router = useRouter();
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount — restore both step and data
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        setData({ ...defaultData, ...parsed.data });
-        if (parsed.step) setStep(parsed.step);
+        if (parsed.data) {
+          setData({ ...defaultData, ...parsed.data });
+        }
+        if (typeof parsed.step === 'number' && parsed.step >= 1 && parsed.step <= TOTAL_STEPS) {
+          setStep(parsed.step);
+        }
       } catch {
         // Corrupt data — start fresh
       }
     }
+    setIsHydrated(true);
   }, []);
 
-  // Save to localStorage on change
+  // Save to localStorage on change — only after initial hydration
   const saveProgress = useCallback(() => {
+    if (!isHydrated) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, data }));
-  }, [step, data]);
+  }, [step, data, isHydrated]);
 
   useEffect(() => {
     saveProgress();

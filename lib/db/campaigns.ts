@@ -15,6 +15,7 @@
  *   - Invalid status transitions: not enforced at data layer (validated in API route).
  */
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { DEFAULT_CAMPAIGN_NAME } from '@/types';
 import type { CampaignStatus, CampaignPriority } from '@/types';
@@ -27,6 +28,11 @@ export interface CampaignFilters {
   status?: CampaignStatus;
 }
 
+export interface CampaignLink {
+  label: string;
+  url: string;
+}
+
 export interface CreateCampaignInput {
   name: string;
   description?: string;
@@ -37,6 +43,7 @@ export interface CreateCampaignInput {
   startDate?: string;
   endDate?: string;
   ownerId?: string;
+  links?: CampaignLink[];
 }
 
 export interface UpdateCampaignInput {
@@ -49,6 +56,7 @@ export interface UpdateCampaignInput {
   startDate?: string | null;
   endDate?: string | null;
   ownerId?: string | null;
+  links?: CampaignLink[];
 }
 
 // -------------------------------------------------------------------------
@@ -114,6 +122,9 @@ export async function createCampaign(data: CreateCampaignInput) {
       startDate: data.startDate ? new Date(data.startDate) : null,
       endDate: data.endDate ? new Date(data.endDate) : null,
       ownerId: data.ownerId,
+      links: data.links
+        ? (data.links as unknown as Prisma.InputJsonValue)
+        : undefined,
     },
     include: {
       _count: {
@@ -143,6 +154,9 @@ export async function updateCampaign(id: string, data: UpdateCampaignInput) {
     updateData.endDate = data.endDate ? new Date(data.endDate) : null;
   }
   if (data.ownerId !== undefined) updateData.ownerId = data.ownerId;
+  if (data.links !== undefined) {
+    updateData.links = data.links as unknown as Prisma.InputJsonValue;
+  }
 
   return prisma.campaign.update({
     where: { id },
