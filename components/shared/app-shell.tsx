@@ -19,6 +19,7 @@ import {
   Settings,
   LogOut,
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/shared/theme-toggle';
 
 interface AppShellProps {
   user: { name: string; role: string };
@@ -143,6 +144,7 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
                 )}
               </a>
             )}
+            <ThemeToggle />
           </div>
         </header>
 
