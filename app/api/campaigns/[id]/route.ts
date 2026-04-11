@@ -112,6 +112,30 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid campaign priority' }, { status: 400 });
   }
 
+  // Validate links if provided
+  if (body.links !== undefined) {
+    if (body.links !== null && !Array.isArray(body.links)) {
+      return NextResponse.json({ error: 'Links must be an array' }, { status: 400 });
+    }
+    if (Array.isArray(body.links)) {
+      for (const link of body.links) {
+        if (
+          typeof link !== 'object' ||
+          link === null ||
+          typeof link.label !== 'string' ||
+          typeof link.url !== 'string' ||
+          !link.label.trim() ||
+          !link.url.trim()
+        ) {
+          return NextResponse.json(
+            { error: 'Each link must have a non-empty label and url' },
+            { status: 400 }
+          );
+        }
+      }
+    }
+  }
+
   const campaign = await updateCampaign(params.id, {
     name: body.name,
     description: body.description,
@@ -122,6 +146,7 @@ export async function PATCH(
     startDate: body.startDate,
     endDate: body.endDate,
     ownerId: body.ownerId,
+    links: body.links,
   });
 
   return NextResponse.json({ campaign });

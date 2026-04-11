@@ -67,14 +67,13 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 });
 
-function formatDate(iso: string): string {
-  return dateFormatter.format(new Date(iso));
+function formatDate(dateStr: string): string {
+  return dateFormatter.format(new Date(dateStr));
 }
 
-function maskApiKey(key: string | null): string {
-  if (!key) return 'Configured via environment variable';
-  if (key.length <= 8) return key;
-  return `${key.slice(0, 7)}...${key.slice(-4)}`;
+function displayApiKeyHint(hint: string | null): string {
+  if (!hint) return 'Not configured';
+  return hint;
 }
 
 function roleBadgeVariant(role: string): 'default' | 'secondary' | 'outline' {
@@ -266,14 +265,37 @@ export default function SettingsPage() {
 
   // ---- Skills update handler ----
   async function handleSkillsUpdate() {
+    if (!isAdmin) return;
     setSkillsUpdateBusy(true);
     setSkillsUpdateMsg(null);
     try {
-      // In v1 this is informational — a real implementation would trigger
-      // a server-side git pull. For now, we simulate the intent.
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const res = await fetch('/api/settings/skills/update', {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const data = (await res.json()) as { error: string };
+        throw new Error(data.error || 'Skills update failed');
+      }
+
+      const result = (await res.json()) as {
+        commitHash: string;
+        skillsUpdated: number;
+      };
+
       setSkillsUpdateMsg(
-        'Skills update requested. In a production deployment, this would pull the latest skills from GitHub.'
+        `Updated ${result.skillsUpdated} skills to ${result.commitHash.slice(0, 7)}.`
+      );
+
+      // Refresh skills data
+      const skillsRes = await fetch('/api/settings/skills');
+      if (skillsRes.ok) {
+        const skillsData = (await skillsRes.json()) as SkillsInfo;
+        setSkills(skillsData);
+      }
+    } catch (err) {
+      setSkillsUpdateMsg(
+        `Error: ${err instanceof Error ? err.message : 'Skills update failed'}`
       );
     } finally {
       setSkillsUpdateBusy(false);
@@ -304,6 +326,7 @@ export default function SettingsPage() {
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
           <button
+            type="button"
             className="ml-2 underline"
             onClick={() => setError(null)}
           >
@@ -335,7 +358,7 @@ export default function SettingsPage() {
                 <Label>Current Key</Label>
                 <div className="flex items-center gap-3">
                   <code className="rounded bg-muted px-3 py-2 font-mono text-sm">
-                    {maskApiKey(apiKeyHint)}
+                    {displayApiKeyHint(apiKeyHint)}
                   </code>
                   {apiKeyHint ? (
                     <Badge variant="secondary">Configured</Badge>

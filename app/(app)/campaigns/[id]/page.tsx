@@ -37,6 +37,11 @@ import type {
 // Types
 // ---------------------------------------------------------------------------
 
+interface CampaignLink {
+  label: string;
+  url: string;
+}
+
 interface CampaignRecord {
   id: string;
   name: string;
@@ -48,6 +53,7 @@ interface CampaignRecord {
   startDate: string | null;
   endDate: string | null;
   ownerId: string | null;
+  links: CampaignLink[] | null;
   createdAt: string;
   updatedAt: string;
   _count: {
@@ -176,6 +182,7 @@ interface EditFormState {
   startDate: string;
   endDate: string;
   ownerId: string;
+  links: CampaignLink[];
 }
 
 // ---------------------------------------------------------------------------
@@ -441,6 +448,7 @@ export default function CampaignDetailPage() {
     startDate: '',
     endDate: '',
     ownerId: '',
+    links: [],
   });
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -505,6 +513,7 @@ export default function CampaignDetailPage() {
         ? new Date(campaign.endDate).toISOString().split('T')[0]
         : '',
       ownerId: campaign.ownerId ?? '',
+      links: Array.isArray(campaign.links) ? campaign.links : [],
     });
     setEditError(null);
     setEditOpen(true);
@@ -537,6 +546,9 @@ export default function CampaignDetailPage() {
           startDate: editForm.startDate || null,
           endDate: editForm.endDate || null,
           ownerId: editForm.ownerId.trim() || null,
+          links: editForm.links.filter(
+            (l) => l.label.trim() && l.url.trim()
+          ),
         }),
       });
 
@@ -687,6 +699,42 @@ export default function CampaignDetailPage() {
       </div>
 
       <Separator />
+
+      {/* Reference links */}
+      {Array.isArray(campaign.links) && campaign.links.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Reference Links
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {campaign.links.map((link, idx) => (
+              <a
+                key={idx}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:bg-muted"
+              >
+                {link.label}
+                <svg
+                  className="ml-1 h-3 w-3"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-4.5-4.5h6m0 0v6m0-6L9.75 14.25"
+                  />
+                </svg>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-4">
@@ -876,6 +924,61 @@ export default function CampaignDetailPage() {
                   </option>
                 ))}
               </select>
+            </div>
+            {/* Reference links editor */}
+            <div className="grid gap-2">
+              <Label>Reference Links</Label>
+              <div className="space-y-2">
+                {editForm.links.map((link, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Label"
+                      value={link.label}
+                      onChange={(e) => {
+                        const updated = [...editForm.links];
+                        updated[idx] = { ...updated[idx], label: e.target.value };
+                        setEditForm((prev) => ({ ...prev, links: updated }));
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="https://..."
+                      value={link.url}
+                      onChange={(e) => {
+                        const updated = [...editForm.links];
+                        updated[idx] = { ...updated[idx], url: e.target.value };
+                        setEditForm((prev) => ({ ...prev, links: updated }));
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const updated = editForm.links.filter((_, i) => i !== idx);
+                        setEditForm((prev) => ({ ...prev, links: updated }));
+                      }}
+                      className="shrink-0 px-2"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      links: [...prev.links, { label: '', url: '' }],
+                    }))
+                  }
+                >
+                  Add link
+                </Button>
+              </div>
             </div>
             {editError && (
               <p className="text-sm text-destructive">{editError}</p>
