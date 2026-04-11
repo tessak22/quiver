@@ -213,6 +213,50 @@ export async function assembleSystemPrompt(
     if (perfSection) sections.push(perfSection);
   }
 
+  // 4b. Featured customer quotes (create and strategy modes)
+  if (options.mode === 'create' || options.mode === 'strategy') {
+    const featuredQuotes = await prisma.researchQuote.findMany({
+      where: { isFeatured: true },
+      take: 10,
+      include: { entry: { select: { contactSegment: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (featuredQuotes.length > 0) {
+      const lines = featuredQuotes.map(
+        (q) =>
+          `- "${q.quote}" — ${q.entry.contactSegment ?? 'customer'} (${q.theme ?? 'general'})`
+      );
+      sections.push(`## Featured Customer Quotes\n${lines.join('\n')}`);
+    }
+  }
+
+  // 4c. Published content awareness (strategy and create modes)
+  if (options.mode === 'strategy' || options.mode === 'create') {
+    const recentContent = await prisma.contentPiece.findMany({
+      where: { status: 'published' },
+      orderBy: { publishedAt: 'desc' },
+      take: 5,
+      select: {
+        title: true,
+        contentType: true,
+        targetKeyword: true,
+        publishedAt: true,
+        excerpt: true,
+      },
+    });
+
+    if (recentContent.length > 0) {
+      const lines = recentContent.map(
+        (c) =>
+          `- ${c.title} (${c.contentType}${
+            c.targetKeyword ? ` | keyword: ${c.targetKeyword}` : ''
+          }) — published ${c.publishedAt?.toISOString().slice(0, 10) ?? 'unknown'}`
+      );
+      sections.push(`## Published Content\n${lines.join('\n')}`);
+    }
+  }
+
   // 5. Mode instructions
   sections.push(
     `# Session Mode: ${options.mode}\n\n${MODE_INSTRUCTIONS[options.mode]}`
