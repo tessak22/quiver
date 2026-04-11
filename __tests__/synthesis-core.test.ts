@@ -22,7 +22,7 @@ vi.mock('@/lib/db/performance', () => ({
   updatePerformanceLog: vi.fn(),
 }));
 
-import { sendMessage } from '@/lib/ai/client';
+import { sendMessage, type AIError } from '@/lib/ai/client';
 import { getActiveContext } from '@/lib/db/context';
 import { updatePerformanceLog } from '@/lib/db/performance';
 
@@ -38,19 +38,20 @@ describe('synthesis-core module', () => {
   });
 
   it('returns empty proposals when AI returns no JSON array', async () => {
-    vi.mocked(sendMessage).mockResolvedValue({ content: 'No changes needed.', error: null });
+    vi.mocked(sendMessage).mockResolvedValue({ content: 'No changes needed.' });
     const result = await synthesizePerformance('log-1', { whatWorked: 'email open rates' });
     expect(result).toEqual({ proposals: [] });
   });
 
   it('returns empty proposals when AI call errors', async () => {
-    vi.mocked(sendMessage).mockResolvedValue({ content: '', error: 'API error' });
+    const apiError: AIError = { code: 'api_error', message: 'API error' };
+    vi.mocked(sendMessage).mockResolvedValue({ error: apiError });
     const result = await synthesizePerformance('log-1', {});
     expect(result).toEqual({ proposals: [] });
   });
 
   it('returns empty proposals when AI returns malformed JSON', async () => {
-    vi.mocked(sendMessage).mockResolvedValue({ content: '[not valid json', error: null });
+    vi.mocked(sendMessage).mockResolvedValue({ content: '[not valid json' });
     const result = await synthesizePerformance('log-1', {});
     expect(result).toEqual({ proposals: [] });
   });
@@ -61,7 +62,6 @@ describe('synthesis-core module', () => {
     ];
     vi.mocked(sendMessage).mockResolvedValue({
       content: JSON.stringify(mockProposals),
-      error: null,
     });
 
     const result = await synthesizePerformance('log-1', { whatWorked: 'subject lines' });
@@ -75,7 +75,7 @@ describe('synthesis-core module', () => {
   });
 
   it('returns empty proposals when AI returns an empty array', async () => {
-    vi.mocked(sendMessage).mockResolvedValue({ content: '[]', error: null });
+    vi.mocked(sendMessage).mockResolvedValue({ content: '[]' });
     const result = await synthesizePerformance('log-1', {});
     expect(result).toEqual({ proposals: [] });
     expect(updatePerformanceLog).not.toHaveBeenCalled();
