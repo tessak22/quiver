@@ -7,13 +7,21 @@ import { Button } from '@/components/ui/button';
 
 export default function AccessDeniedPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleLogout() {
     setIsLoading(true);
+    setError(null);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) {
+        setError('Sign out failed. Please try again.');
+        setIsLoading(false);
+        return;
+      }
       window.location.href = '/login';
     } catch {
+      setError('Sign out failed. Please try again.');
       setIsLoading(false);
     }
   }
@@ -28,6 +36,12 @@ export default function AccessDeniedPage() {
             for an invite, then check your email for the invite link.
           </p>
         </div>
+
+        {error && (
+          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
         <Button
           onClick={handleLogout}

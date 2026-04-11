@@ -1,17 +1,33 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import {
+  PUBLIC_ROUTES,
+  MEMBERSHIP_EXEMPT_ROUTES,
+  ONBOARDING_EXEMPT_ROUTES,
+  resolveRoute,
+  type RoutingDecision,
+} from '@/lib/middleware-routing';
 
-const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public'];
-
-// Routes that require auth but NOT team membership (pre-membership flows)
-const MEMBERSHIP_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding', '/api/auth/logout', '/access-denied'];
-
-// Routes that bypass the onboarding-complete gate. Subset of membership-exempt
-// routes — /access-denied is intentionally excluded so the onboarding gate
-// still covers it (only non-members are redirected there, so it's unreachable
-// before onboarding anyway). /api/auth/logout is included because users must
-// always be able to sign out.
-const ONBOARDING_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding', '/api/auth/logout'];
+function applyDecision(
+  decision: RoutingDecision,
+  request: NextRequest,
+  supabaseResponse: NextResponse
+): NextResponse {
+  switch (decision.action) {
+    case 'redirect': {
+      const url = request.nextUrl.clone();
+      url.pathname = decision.to;
+      return NextResponse.redirect(url);
+    }
+    case 'json-error':
+      return NextResponse.json(
+        { error: decision.error },
+        { status: decision.status }
+      );
+    case 'pass':
+      return supabaseResponse;
+  }
+}
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -43,118 +59,102 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute = PUBLIC_ROUTES.some((route) =>
     pathname.startsWith(route)
   );
-
-  // Share API endpoints validate via token, not auth session
   const isShareApi = pathname.match(/^\/api\/sessions\/[^/]+\/share/) !== null;
-
-  // Unauthenticated users can only access public routes (and share API)
-  if (!user && !isPublicRoute && !isShareApi) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
-  }
-
-  // Authenticated users on login page should go to dashboard
-  if (user && pathname === '/login') {
-    const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
-    return NextResponse.redirect(url);
-  }
-
-  // Verify team membership on all non-public, non-exempt routes.
-  // Uses a short-lived cookie (5 min) to avoid hitting the DB on every request.
-  // Removed users lose access within 5 minutes.
   const isMembershipExempt = MEMBERSHIP_EXEMPT_ROUTES.some((route) =>
     pathname.startsWith(route)
   );
+  const isOnboardingExempt = ONBOARDING_EXEMPT_ROUTES.some((route) =>
+    pathname.startsWith(route)
+  );
+
+  // ---------------------------------------------------------------------------
+  // Gather data — only query the DB when the route requires it
+  // ---------------------------------------------------------------------------
+
+  let isMember = false;
+  let membershipCached = false;
 
   if (user && !isPublicRoute && !isMembershipExempt && !isShareApi) {
-    // Cookie value is the user ID — only valid for this specific user
-    const membershipCached = request.cookies.get('quiver_member')?.value;
-
-    if (membershipCached !== user.id) {
+    const cachedValue = request.cookies.get('quiver_member')?.value;
+    if (cachedValue === user.id) {
+      membershipCached = true;
+    } else {
       const { data: member } = await supabase
         .from('team_members')
         .select('id')
         .eq('id', user.id)
         .limit(1)
         .single();
-
-      if (!member) {
-        // Authenticated but not a team member
-        if (pathname.startsWith('/api/')) {
-          return NextResponse.json(
-            { error: 'Not a team member' },
-            { status: 403 }
-          );
-        }
-
-        // If onboarding is already complete, send to access-denied instead of
-        // setup — prevents a dead-end loop where setup rejects re-onboarding.
-        // Uses maybeSingle() so zero rows returns null/null (not an error),
-        // and only actual query failures set contextError.
-        const { data: activeContext, error: contextError } = await supabase
-          .from('context_versions')
-          .select('id')
-          .eq('isActive', true)
-          .limit(1)
-          .maybeSingle();
-
-        const url = request.nextUrl.clone();
-        url.pathname = activeContext || contextError ? '/access-denied' : '/setup';
-        return NextResponse.redirect(url);
-      }
-
-      // Cache membership for 5 minutes to avoid DB query on every request
-      supabaseResponse.cookies.set('quiver_member', user.id, {
-        path: '/',
-        maxAge: 60 * 5,
-        httpOnly: true,
-        sameSite: 'lax',
-      });
+      isMember = !!member;
     }
   }
 
-  // Check if onboarding is complete (cookie set after onboarding)
-  // If not complete and not on an onboarding-exempt route, redirect to setup
-  const isOnboardingExempt = ONBOARDING_EXEMPT_ROUTES.some((route) =>
-    pathname.startsWith(route)
-  );
+  // Context query — needed for non-member redirect and onboarding gate.
+  // Uses maybeSingle() so zero rows returns null/null (not an error).
+  let activeContextExists = false;
+  let contextQueryFailed = false;
 
-  if (user && !isPublicRoute && !isOnboardingExempt && !isShareApi) {
-    const onboardingComplete = request.cookies.get('quiver_onboarded')?.value;
-    if (!onboardingComplete) {
-      // Check DB only if cookie not set — this runs once per session.
-      // Uses maybeSingle() so zero rows returns null/null (not an error).
-      // On actual query failure, fall through rather than redirecting to
-      // /setup — a transient DB error should not trap users in a dead-end.
-      const { data: activeContext, error: onboardingQueryError } = await supabase
-        .from('context_versions')
-        .select('id')
-        .eq('isActive', true)
-        .limit(1)
-        .maybeSingle();
+  const needsContextCheck =
+    user &&
+    !isPublicRoute &&
+    !isShareApi &&
+    ((!isMembershipExempt && !isMember && !membershipCached) ||
+     (!isOnboardingExempt && !request.cookies.get('quiver_onboarded')?.value));
 
-      if (!activeContext && !onboardingQueryError) {
-        if (pathname.startsWith('/api/')) {
-          return NextResponse.json(
-            { error: 'Onboarding not complete' },
-            { status: 403 }
-          );
-        }
-        const url = request.nextUrl.clone();
-        url.pathname = '/setup';
-        return NextResponse.redirect(url);
-      }
+  if (needsContextCheck) {
+    const { data: activeContext, error: contextError } = await supabase
+      .from('context_versions')
+      .select('id')
+      .eq('isActive', true)
+      .limit(1)
+      .maybeSingle();
+    activeContextExists = !!activeContext;
+    contextQueryFailed = !!contextError;
+  }
 
-      // Context exists — set cookie so we don't check again
-      supabaseResponse.cookies.set('quiver_onboarded', 'true', {
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365, // 1 year
-        httpOnly: true,
-        sameSite: 'lax',
-      });
-    }
+  const onboardingComplete = !!request.cookies.get('quiver_onboarded')?.value;
+
+  // ---------------------------------------------------------------------------
+  // Route decision — single code path shared with tests
+  // ---------------------------------------------------------------------------
+
+  const decision = resolveRoute({
+    pathname,
+    user: user ? { id: user.id } : null,
+    isMember,
+    membershipCached,
+    onboardingComplete,
+    activeContextExists,
+    contextQueryFailed,
+  });
+
+  if (decision.action !== 'pass') {
+    return applyDecision(decision, request, supabaseResponse);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Side effects — only on pass-through (cookies for caching)
+  // ---------------------------------------------------------------------------
+
+  // Cache membership for 5 minutes to avoid DB query on every request
+  if (user && isMember && !membershipCached) {
+    supabaseResponse.cookies.set('quiver_member', user.id, {
+      path: '/',
+      maxAge: 60 * 5,
+      httpOnly: true,
+      sameSite: 'lax',
+    });
+  }
+
+  // Only set the cookie when context was confirmed to exist — not on
+  // query error, which would falsely mark onboarding complete for 1 year.
+  if (user && !onboardingComplete && activeContextExists) {
+    supabaseResponse.cookies.set('quiver_onboarded', 'true', {
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+      httpOnly: true,
+      sameSite: 'lax',
+    });
   }
 
   return supabaseResponse;
