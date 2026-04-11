@@ -82,3 +82,77 @@ export interface ContextUpdateProposal {
 
 // Performance signal for UI display
 export type PerformanceSignal = 'no_data' | 'logging' | 'strong' | 'weak';
+
+// --- Issue #47: Customer Research Types ---
+
+export type ResearchSourceType =
+  | 'call' | 'interview' | 'survey' | 'review'
+  | 'forum' | 'support_ticket' | 'social' | 'common_room' | 'other';
+
+export type ContactStage = 'prospect' | 'customer' | 'churned' | 'never_converted';
+
+export type HypothesisSignal = 'validates' | 'challenges' | 'neutral';
+
+export type ResearchSentiment = 'positive' | 'negative' | 'neutral' | 'mixed';
+
+export const RESEARCH_THEMES = [
+  'pricing', 'onboarding', 'competitor_mention', 'feature_gap',
+  'messaging', 'icp_fit', 'other'
+] as const;
+export type ResearchTheme = typeof RESEARCH_THEMES[number];
+
+export const RESEARCH_SOURCE_LABELS: Record<ResearchSourceType, string> = {
+  call: 'Call',
+  interview: 'Interview',
+  survey: 'Survey',
+  review: 'Review',
+  forum: 'Forum',
+  support_ticket: 'Support ticket',
+  social: 'Social',
+  common_room: 'Common Room',
+  other: 'Other',
+};
+
+export const CONTACT_STAGES: ContactStage[] = ['prospect', 'customer', 'churned', 'never_converted'];
+
+export const CONTACT_STAGE_LABELS: Record<ContactStage, string> = {
+  prospect: 'Prospect',
+  customer: 'Customer',
+  churned: 'Churned',
+  never_converted: 'Never converted',
+};
+
+// --- Issue #49: Content Layer Types ---
+
+export type ContentType = 'blog_post' | 'case_study' | 'landing_page' | 'changelog' | 'newsletter' | 'social_thread' | 'video_script' | 'doc' | 'other';
+export type ContentStatus = 'draft' | 'review' | 'approved' | 'published' | 'archived';
+export type DistributionChannel = 'website' | 'dev_to' | 'hashnode' | 'medium' | 'newsletter' | 'linkedin' | 'twitter' | 'youtube' | 'other';
+export type MetricSnapshotSource = 'manual' | 'mcp_pull' | 'scheduled_sync';
+
+export const CONTENT_TYPES: ContentType[] = ['blog_post', 'case_study', 'landing_page', 'changelog', 'newsletter', 'social_thread', 'video_script', 'doc', 'other'];
+export const CONTENT_STATUSES: ContentStatus[] = ['draft', 'review', 'approved', 'published', 'archived'];
+export const DISTRIBUTION_CHANNELS: DistributionChannel[] = ['website', 'dev_to', 'hashnode', 'medium', 'newsletter', 'linkedin', 'twitter', 'youtube', 'other'];
+
+export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
+  blog_post: 'Blog post',
+  case_study: 'Case study',
+  landing_page: 'Landing page',
+  changelog: 'Changelog',
+  newsletter: 'Newsletter',
+  social_thread: 'Social thread',
+  video_script: 'Video script',
+  doc: 'Doc',
+  other: 'Other',
+};
+
+export const DISTRIBUTION_CHANNEL_LABELS: Record<DistributionChannel, string> = {
+  website: 'Website',
+  dev_to: 'Dev.to',
+  hashnode: 'Hashnode',
+  medium: 'Medium',
+  newsletter: 'Newsletter',
+  linkedin: 'LinkedIn',
+  twitter: 'Twitter',
+  youtube: 'YouTube',
+  other: 'Other',
+};

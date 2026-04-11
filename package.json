@@ -23,7 +23,9 @@
     "@supabase/supabase-js": "^2.103.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "isomorphic-dompurify": "^3.8.0",
     "lucide-react": "^1.8.0",
+    "marked": "^18.0.0",
     "next": "14.2.35",
     "prisma": "^6.19.3",
     "react": "^18",
@@ -33,6 +35,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "@types/marked": "^5.0.2",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
