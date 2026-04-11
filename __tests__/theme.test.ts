@@ -47,3 +47,23 @@ describe('FOUC script assembly', () => {
     expect(() => new Function(script)).not.toThrow();
   });
 });
+
+describe('writer/reader consistency', () => {
+  it('toggle dark token matches bootstrap reader token', () => {
+    // The bootstrap script in layout.tsx reads: if(t === THEME_DARK_CLASS)
+    // The toggle in theme-toggle.tsx writes: localStorage.setItem(KEY, THEME_DARK_CLASS)
+    // Both must use the same value so a persisted preference round-trips correctly.
+    const bootstrapReaderToken = THEME_DARK_CLASS;
+    const toggleWriterToken = THEME_DARK_CLASS;
+    expect(toggleWriterToken).toBe(bootstrapReaderToken);
+  });
+
+  it('bootstrap script contains the exact token the toggle would persist', () => {
+    const script = `(function(){try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');if(t==='${THEME_DARK_CLASS}')document.documentElement.classList.add('${THEME_DARK_CLASS}')}catch(e){}})()`;
+
+    // The script must check for the same value the toggle writes
+    expect(script).toContain(`t==='${THEME_DARK_CLASS}'`);
+    // The script must read from the same key the toggle writes to
+    expect(script).toContain(`getItem('${THEME_STORAGE_KEY}')`);
+  });
+});

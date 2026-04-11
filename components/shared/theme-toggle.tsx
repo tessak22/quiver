@@ -21,7 +21,7 @@ export function ThemeToggle() {
     setDark(next);
     document.documentElement.classList.toggle(THEME_DARK_CLASS, next);
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, next ? 'dark' : 'light');
+      localStorage.setItem(THEME_STORAGE_KEY, next ? THEME_DARK_CLASS : 'light');
     } catch {
       // localStorage may be unavailable (private browsing, quota exceeded)
     }
