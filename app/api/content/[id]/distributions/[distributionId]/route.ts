@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { updateDistribution, deleteDistribution } from '@/lib/db/content';
-import { prisma } from '@/lib/db';
+import { getDistribution, updateDistribution, deleteDistribution } from '@/lib/db/content';
 
 function parseDate(value: unknown): Date | null | undefined {
   if (value === undefined) return undefined;
@@ -26,10 +25,7 @@ export async function PATCH(
 
   try {
     // Verify distribution belongs to this content piece
-    const existing = await prisma.contentDistribution.findUnique({
-      where: { id: params.distributionId },
-      select: { contentPieceId: true },
-    });
+    const existing = await getDistribution(params.distributionId);
 
     if (!existing || existing.contentPieceId !== params.id) {
       return NextResponse.json(
@@ -83,10 +79,7 @@ export async function DELETE(
 
   try {
     // Verify distribution belongs to this content piece
-    const existing = await prisma.contentDistribution.findUnique({
-      where: { id: params.distributionId },
-      select: { contentPieceId: true },
-    });
+    const existing = await getDistribution(params.distributionId);
 
     if (!existing || existing.contentPieceId !== params.id) {
       return NextResponse.json(
