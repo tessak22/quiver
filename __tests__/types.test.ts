@@ -16,7 +16,10 @@ import {
   TEAM_ROLES,
   SESSION_MODES,
   CAMPAIGN_STATUSES,
+  CAMPAIGN_PRIORITIES,
   ARTIFACT_STATUSES,
+  DEFAULT_CAMPAIGN_NAME,
+  REMINDER_PREFIX,
 } from '@/types';
 import { getValidTransitions } from '@/lib/db/artifacts';
 import { getSkillNamesForMode } from '@/lib/ai/skills';
@@ -95,6 +98,46 @@ describe('ARTIFACT_STATUSES', () => {
       const transitions = getValidTransitions(status);
       expect(Array.isArray(transitions)).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CAMPAIGN_PRIORITIES completeness
+// ---------------------------------------------------------------------------
+
+describe('CAMPAIGN_PRIORITIES', () => {
+  it('contains all CampaignPriority values', () => {
+    const expected = ['high', 'medium', 'low'];
+    expect(CAMPAIGN_PRIORITIES).toEqual(expect.arrayContaining(expected));
+    expect(CAMPAIGN_PRIORITIES).toHaveLength(expected.length);
+  });
+
+  it('contains no duplicates', () => {
+    expect(new Set(CAMPAIGN_PRIORITIES).size).toBe(CAMPAIGN_PRIORITIES.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Magic-string constants
+// ---------------------------------------------------------------------------
+
+describe('Magic-string constants', () => {
+  it('DEFAULT_CAMPAIGN_NAME is a non-empty string', () => {
+    expect(typeof DEFAULT_CAMPAIGN_NAME).toBe('string');
+    expect(DEFAULT_CAMPAIGN_NAME.length).toBeGreaterThan(0);
+  });
+
+  it('DEFAULT_CAMPAIGN_NAME is "Unassigned"', () => {
+    expect(DEFAULT_CAMPAIGN_NAME).toBe('Unassigned');
+  });
+
+  it('REMINDER_PREFIX is a non-empty string', () => {
+    expect(typeof REMINDER_PREFIX).toBe('string');
+    expect(REMINDER_PREFIX.length).toBeGreaterThan(0);
+  });
+
+  it('REMINDER_PREFIX starts with "Reminder:"', () => {
+    expect(REMINDER_PREFIX).toMatch(/^Reminder:/);
   });
 });
 

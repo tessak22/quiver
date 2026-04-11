@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PUBLIC_ROUTES = ['/login', '/invite'];
+const PUBLIC_ROUTES = ['/login', '/invite', '/shared'];
 
 // Routes that require auth but NOT team membership (pre-membership flows)
 const MEMBERSHIP_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding'];
@@ -94,7 +94,7 @@ export async function middleware(request: NextRequest) {
 
   // Check if onboarding is complete (cookie set after onboarding)
   // If not complete and not on setup page, redirect to setup
-  if (user && !isPublicRoute && pathname !== '/setup') {
+  if (user && !isPublicRoute && !isMembershipExempt && pathname !== '/setup') {
     const onboardingComplete = request.cookies.get('quiver_onboarded')?.value;
     if (!onboardingComplete) {
       // Check DB only if cookie not set — this runs once per session
@@ -106,6 +106,12 @@ export async function middleware(request: NextRequest) {
         .single();
 
       if (!activeContext) {
+        if (pathname.startsWith('/api/')) {
+          return NextResponse.json(
+            { error: 'Onboarding not complete' },
+            { status: 403 }
+          );
+        }
         const url = request.nextUrl.clone();
         url.pathname = '/setup';
         return NextResponse.redirect(url);

@@ -553,6 +553,40 @@ export default function PerformancePage() {
     }
   }
 
+  // ------ CSV export ------
+
+  function handleExportCsv() {
+    const csvRows: string[] = [];
+    csvRows.push('Date,Artifact,Campaign,Log Type,What Worked,What Didn\'t,Notes,Metrics');
+
+    for (const log of logs) {
+      const date = formatDateTime(log.recordedAt);
+      const artifact = log.artifact?.title ?? '';
+      const campaign = log.campaign.name;
+      const logType = LOG_TYPE_LABELS[log.logType as PerformanceLogType] ?? log.logType;
+      const whatWorked = log.whatWorked ?? '';
+      const whatDidnt = log.whatDidnt ?? '';
+      const notes = log.qualitativeNotes ?? '';
+      const metrics = log.metrics ? JSON.stringify(log.metrics) : '';
+
+      // Escape fields for CSV (wrap in quotes, escape internal quotes)
+      const fields = [date, artifact, campaign, logType, whatWorked, whatDidnt, notes, metrics];
+      const escaped = fields.map((f) => `"${f.replace(/"/g, '""')}"`);
+      csvRows.push(escaped.join(','));
+    }
+
+    const content = csvRows.join('\n');
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `performance-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   // ------ Toggle log expansion ------
 
   function toggleLog(id: string) {
@@ -581,13 +615,22 @@ export default function PerformancePage() {
             Log results, track what works, and let AI find patterns in your data.
           </p>
         </div>
-        <Button
-          onClick={handleGenerateReport}
-          disabled={generatingReport || logs.length === 0}
-          variant="outline"
-        >
-          {generatingReport ? 'Generating...' : 'Generate Pattern Report'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleExportCsv}
+            disabled={logs.length === 0}
+            variant="outline"
+          >
+            Export CSV
+          </Button>
+          <Button
+            onClick={handleGenerateReport}
+            disabled={generatingReport || logs.length === 0}
+            variant="outline"
+          >
+            {generatingReport ? 'Generating...' : 'Generate Pattern Report'}
+          </Button>
+        </div>
       </div>
 
       {/* Error / Success banners */}

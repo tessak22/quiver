@@ -46,6 +46,7 @@ model Campaign {
   endDate             DateTime?
   ownerId             String?
   contextVersionId    String?
+  links               Json?    // [{label: string, url: string}]
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 

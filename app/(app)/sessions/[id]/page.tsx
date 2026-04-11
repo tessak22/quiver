@@ -29,6 +29,17 @@ const MODE_COLORS: Record<SessionMode, string> = {
   optimize: 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200',
 };
 
+const CONTEXT_FIELDS: { value: string; label: string }[] = [
+  { value: 'positioningStatement', label: 'Positioning Statement' },
+  { value: 'icpDefinition', label: 'ICP Definition' },
+  { value: 'messagingPillars', label: 'Messaging Pillars' },
+  { value: 'customerLanguage', label: 'Customer Language' },
+  { value: 'proofPoints', label: 'Proof Points' },
+  { value: 'activeHypotheses', label: 'Active Hypotheses' },
+  { value: 'brandVoice', label: 'Brand Voice' },
+  { value: 'competitiveLandscape', label: 'Competitive Landscape' },
+];
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -102,12 +113,95 @@ function parseMessages(raw: unknown): ChatMessage[] {
 // Message Bubble Component
 // ---------------------------------------------------------------------------
 
+function SaveToContextButton({
+  messageContent,
+  sessionId,
+}: {
+  messageContent: string;
+  sessionId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSelect(field: string) {
+    setSaving(true);
+
+    try {
+      const res = await fetch('/api/context/propose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          field,
+          proposedValue: messageContent,
+          sessionId,
+        }),
+      });
+
+      if (!res.ok) {
+        const data: { error?: string } = await res.json();
+        throw new Error(data.error ?? 'Failed to propose context update');
+      }
+
+      setSaved(true);
+      setOpen(false);
+    } catch {
+      // Silently close — the user can retry
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (saved) {
+    return (
+      <span className="text-xs text-muted-foreground italic">
+        Proposed update saved
+      </span>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        onClick={() => setOpen((prev) => !prev)}
+        title="Save to Context"
+        disabled={saving}
+      >
+        {saving ? 'Saving...' : 'Save to Context'}
+      </button>
+      {open && (
+        <div className="absolute left-0 bottom-full mb-1 z-10 w-56 rounded-md border bg-popover p-1 shadow-md">
+          <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+            Save as context field:
+          </p>
+          {CONTEXT_FIELDS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              className="w-full text-left rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+              onClick={() => handleSelect(f.value)}
+              disabled={saving}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
   isStreaming,
+  sessionId,
 }: {
   message: ChatMessage;
   isStreaming?: boolean;
+  sessionId?: string | null;
 }) {
   const isUser = message.role === 'user';
 
@@ -115,16 +209,26 @@ function MessageBubble({
     <div
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
     >
-      <div
-        className={`max-w-[85%] rounded-lg px-4 py-3 text-sm ${
-          isUser
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted'
-        }`}
-      >
-        <div className="whitespace-pre-wrap break-words">{message.content}</div>
-        {isStreaming && (
-          <span className="inline-block w-2 h-4 ml-0.5 bg-current animate-pulse" />
+      <div className="max-w-[85%] space-y-1">
+        <div
+          className={`rounded-lg px-4 py-3 text-sm ${
+            isUser
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted'
+          }`}
+        >
+          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          {isStreaming && (
+            <span className="inline-block w-2 h-4 ml-0.5 bg-current animate-pulse" />
+          )}
+        </div>
+        {!isUser && !isStreaming && sessionId && (
+          <div className="px-1">
+            <SaveToContextButton
+              messageContent={message.content}
+              sessionId={sessionId}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -276,6 +380,9 @@ export default function SessionChatPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -391,6 +498,7 @@ export default function SessionChatPage() {
       const decoder = new TextDecoder();
       let buffer = '';
       let fullContent = '';
+      let receivedDoneEvent = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -455,6 +563,7 @@ export default function SessionChatPage() {
                 break;
               }
               case 'done': {
+                receivedDoneEvent = true;
                 // Finalize: add the full assistant message
                 const assistantMessage: ChatMessage = {
                   role: 'assistant',
@@ -483,7 +592,7 @@ export default function SessionChatPage() {
       }
 
       // If stream ended without a done event, finalize
-      if (fullContent && isStreaming) {
+      if (fullContent && !receivedDoneEvent) {
         const assistantMessage: ChatMessage = {
           role: 'assistant',
           content: fullContent,
@@ -551,6 +660,42 @@ export default function SessionChatPage() {
       // Silent fail — title update is not critical
     } finally {
       setSavingTitle(false);
+    }
+  }
+
+  // Share session
+  async function handleShare() {
+    if (!sessionId) return;
+    setShareLoading(true);
+
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/share`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const data: { error?: string } = await res.json();
+        throw new Error(data.error ?? 'Failed to generate share link');
+      }
+
+      const data: { shareUrl: string } = await res.json();
+      const fullUrl = `${window.location.origin}${data.shareUrl}`;
+      setShareUrl(fullUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate share link');
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleCopyShareUrl() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      // Fallback: select the text in the input
     }
   }
 
@@ -641,7 +786,45 @@ export default function SessionChatPage() {
             </Badge>
           )}
         </div>
+
+        {/* Share button */}
+        {sessionId && !isNewSession && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleShare}
+            disabled={shareLoading}
+            className="shrink-0"
+          >
+            {shareLoading ? 'Generating...' : 'Share'}
+          </Button>
+        )}
       </div>
+
+      {/* Share URL banner */}
+      {shareUrl && (
+        <div className="border-b px-4 py-2 shrink-0">
+          <div className="flex items-center gap-2 max-w-3xl mx-auto">
+            <input
+              type="text"
+              readOnly
+              value={shareUrl}
+              className="flex-1 h-8 px-2 text-xs border rounded bg-muted truncate"
+              onFocus={(e) => e.target.select()}
+            />
+            <Button variant="outline" size="sm" onClick={handleCopyShareUrl}>
+              {shareCopied ? 'Copied!' : 'Copy link'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShareUrl(null)}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Context Panel */}
       {session && (
@@ -697,7 +880,7 @@ export default function SessionChatPage() {
 
         <div className="space-y-4 max-w-3xl mx-auto">
           {messages.map((msg, i) => (
-            <MessageBubble key={`${msg.role}-${i}`} message={msg} />
+            <MessageBubble key={`${msg.role}-${i}`} message={msg} sessionId={sessionId} />
           ))}
 
           {/* Streaming response */}

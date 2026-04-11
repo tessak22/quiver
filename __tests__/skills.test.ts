@@ -48,6 +48,81 @@ describe('loadSkills', () => {
 });
 
 // ---------------------------------------------------------------------------
+// isValidSkillName — path traversal guard (tested via loadSkills)
+// ---------------------------------------------------------------------------
+
+describe('isValidSkillName (path traversal guard via loadSkills)', () => {
+  it('rejects skill names containing directory traversal (..)', () => {
+    expect(() => loadSkills(['../etc/passwd'])).toThrow(
+      /Invalid skill name/
+    );
+  });
+
+  it('rejects skill names containing forward slashes', () => {
+    expect(() => loadSkills(['some/path'])).toThrow(
+      /Invalid skill name/
+    );
+  });
+
+  it('rejects skill names containing backslashes', () => {
+    expect(() => loadSkills(['some\\path'])).toThrow(
+      /Invalid skill name/
+    );
+  });
+
+  it('rejects skill names containing dots', () => {
+    expect(() => loadSkills(['skill.name'])).toThrow(
+      /Invalid skill name/
+    );
+  });
+
+  it('rejects skill names with spaces', () => {
+    expect(() => loadSkills(['skill name'])).toThrow(
+      /Invalid skill name/
+    );
+  });
+
+  it('rejects empty string skill names', () => {
+    expect(() => loadSkills([''])).toThrow(
+      /Invalid skill name/
+    );
+  });
+
+  it('rejects skill names with special characters', () => {
+    const malicious = ['@evil', '$money', '!bang', 'semi;colon', 'back`tick'];
+    for (const name of malicious) {
+      expect(() => loadSkills([name])).toThrow(/Invalid skill name/);
+    }
+  });
+
+  it('accepts valid skill names with hyphens', () => {
+    // This will fail with "Skill file not found" not "Invalid skill name"
+    // because the name is valid but the file doesn't exist
+    expect(() => loadSkills(['valid-skill-name'])).toThrow(
+      /Skill file not found/
+    );
+  });
+
+  it('accepts valid skill names with underscores', () => {
+    expect(() => loadSkills(['valid_skill_name'])).toThrow(
+      /Skill file not found/
+    );
+  });
+
+  it('accepts valid skill names with numbers', () => {
+    expect(() => loadSkills(['skill123'])).toThrow(
+      /Skill file not found/
+    );
+  });
+
+  it('provides a helpful error message for invalid names', () => {
+    expect(() => loadSkills(['../traversal'])).toThrow(
+      /Skill names may only contain letters, numbers, hyphens, and underscores/
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getSkillNamesForMode — resolves skill names without file I/O
 // ---------------------------------------------------------------------------
 
