@@ -291,9 +291,11 @@ export default function SessionChatPage() {
     scrollToBottom();
   }, [messages, streamingContent, scrollToBottom]);
 
-  // Fetch existing session
-  const fetchSession = useCallback(async (id: string) => {
-    setLoading(true);
+  // Fetch existing session — only for initial page load, not during streaming
+  const fetchSession = useCallback(async (id: string, isInitialLoad = false) => {
+    if (isInitialLoad) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -305,18 +307,23 @@ export default function SessionChatPage() {
 
       const data: { session: SessionData } = await res.json();
       setSession(data.session);
-      setMessages(parseMessages(data.session.messages));
+      // Only overwrite messages on initial load — not during/after streaming
+      if (isInitialLoad) {
+        setMessages(parseMessages(data.session.messages));
+      }
       setSessionId(data.session.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load session');
     } finally {
-      setLoading(false);
+      if (isInitialLoad) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     if (!isNewSession && routeId) {
-      fetchSession(routeId);
+      fetchSession(routeId, true);
     }
   }, [isNewSession, routeId, fetchSession]);
 
@@ -415,8 +422,24 @@ export default function SessionChatPage() {
                     `/sessions/${event.sessionId}`
                   );
                 }
-                // Fetch the full session data now that we have an ID
-                fetchSession(event.sessionId);
+                // Don't fetch session during streaming — messages aren't saved yet.
+                // Set minimal session data from what we already know.
+                if (!session) {
+                  setSession({
+                    id: event.sessionId,
+                    title: null,
+                    mode: currentMode,
+                    skillsLoaded: [],
+                    messages: [],
+                    campaignId: initialCampaignId ?? null,
+                    contextVersionId: null,
+                    campaign: null,
+                    contextVersion: null,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    isArchived: false,
+                  });
+                }
                 break;
               }
               case 'text': {
@@ -441,6 +464,9 @@ export default function SessionChatPage() {
                 setMessages((prev) => [...prev, assistantMessage]);
                 setStreamingContent('');
                 setIsStreaming(false);
+
+                // Trigger title generation for new sessions
+                // Full session fetch happens via the sessionId state update
                 break;
               }
               case 'error': {

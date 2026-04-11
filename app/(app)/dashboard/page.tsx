@@ -187,7 +187,7 @@ function QuickStartBlock() {
         </Link>
         <div className="flex flex-wrap gap-2">
           {SESSION_MODES.map((mode) => (
-            <Link key={mode} href={`/sessions/new?mode=${mode}`}>
+            <Link key={mode} href={`/sessions/new-chat?mode=${mode}`}>
               <span
                 className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold cursor-pointer transition-opacity hover:opacity-80 ${MODE_COLORS[mode]}`}
               >

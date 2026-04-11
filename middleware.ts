@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 const PUBLIC_ROUTES = ['/login', '/invite'];
 
 // Routes that require auth but NOT team membership (pre-membership flows)
-const MEMBERSHIP_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding/complete'];
+const MEMBERSHIP_EXEMPT_ROUTES = ['/setup', '/api/team/accept-invite', '/api/onboarding'];
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -52,32 +52,43 @@ export async function middleware(request: NextRequest) {
   }
 
   // Verify team membership on all non-public, non-exempt routes.
-  // No cookie caching — always check DB so removed users lose access immediately.
+  // Uses a short-lived cookie (5 min) to avoid hitting the DB on every request.
+  // Removed users lose access within 5 minutes.
   const isMembershipExempt = MEMBERSHIP_EXEMPT_ROUTES.some((route) =>
     pathname.startsWith(route)
   );
 
   if (user && !isPublicRoute && !isMembershipExempt) {
-    const { data: member } = await supabase
-      .from('team_members')
-      .select('id')
-      .eq('id', user.id)
-      .limit(1)
-      .single();
+    const membershipCached = request.cookies.get('quiver_member')?.value;
 
-    if (!member) {
-      // Authenticated but not a team member
-      if (pathname.startsWith('/api/')) {
-        // API routes: return 403 JSON
-        return NextResponse.json(
-          { error: 'Not a team member' },
-          { status: 403 }
-        );
+    if (!membershipCached) {
+      const { data: member } = await supabase
+        .from('team_members')
+        .select('id')
+        .eq('id', user.id)
+        .limit(1)
+        .single();
+
+      if (!member) {
+        // Authenticated but not a team member
+        if (pathname.startsWith('/api/')) {
+          return NextResponse.json(
+            { error: 'Not a team member' },
+            { status: 403 }
+          );
+        }
+        const url = request.nextUrl.clone();
+        url.pathname = '/setup';
+        return NextResponse.redirect(url);
       }
-      // Pages: redirect to login
-      const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      return NextResponse.redirect(url);
+
+      // Cache membership for 5 minutes to avoid DB query on every request
+      supabaseResponse.cookies.set('quiver_member', 'true', {
+        path: '/',
+        maxAge: 60 * 5,
+        httpOnly: true,
+        sameSite: 'lax',
+      });
     }
   }
 

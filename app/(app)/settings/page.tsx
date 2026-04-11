@@ -157,9 +157,12 @@ export default function SettingsPage() {
       setMembers(teamData.members);
       setSkills(skillsData);
 
-      // Read the API key hint from the public env var (if exposed)
-      const envKey = process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY_HINT;
-      setApiKeyHint(envKey ?? null);
+      // Check API key status from server
+      const keyRes = await fetch('/api/settings/api-key-status');
+      if (keyRes.ok) {
+        const keyData: { isSet: boolean; hint: string | null } = await keyRes.json();
+        setApiKeyHint(keyData.hint);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
