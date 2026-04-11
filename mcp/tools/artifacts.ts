@@ -108,16 +108,15 @@ export function registerArtifactTools(server: McpServer) {
           return error(`No artifact found matching '${title}'.`);
         }
 
-        if (matches.length > 1 && matches.length <= 5) {
-          const list = matches
-            .map((a) => `${a.title} (${a.id})`)
-            .join(', ');
+        if (matches.length > 1) {
+          const shown = matches.slice(0, 5);
+          const list = shown.map((a) => `${a.title} (${a.id})`).join(', ');
+          const suffix = matches.length > 5 ? ` … and ${matches.length - 5} more` : '';
           return text(
-            `Found ${matches.length} artifacts matching '${title}': ${list}. Which did you mean? Provide the artifact_id.`
+            `Found ${matches.length} artifacts matching '${title}': ${list}${suffix}. Provide the artifact_id.`
           );
         }
 
-        // Single match or many matches — return the most recent
         return text(JSON.stringify(matches[0], null, 2));
       } catch (err) {
         console.error('[quiver-mcp] get_artifact error:', err);
@@ -199,20 +198,12 @@ export function registerArtifactTools(server: McpServer) {
           return error(`No artifact found with ID '${artifact_id}'.`);
         }
 
-        // Create a new version with updated fields
         const newVersion = await createArtifactVersion(artifact_id, {
           title: title ?? existing.title,
           content: content ?? existing.content,
+          tags,
           createdBy: 'mcp',
         });
-
-        // Update tags on the new version if provided
-        if (tags) {
-          await prisma.artifact.update({
-            where: { id: newVersion.id },
-            data: { tags },
-          });
-        }
 
         const result = await getArtifact(newVersion.id);
         return text(JSON.stringify(result, null, 2));

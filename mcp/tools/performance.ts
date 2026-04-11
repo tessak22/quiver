@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import {
   createPerformanceLog,
@@ -13,7 +14,17 @@ import { applyContextUpdates } from '@/lib/db/context';
 import { synthesizePerformance } from '@/lib/ai/synthesis-core';
 import { text, error } from '../lib/response.js';
 import { resolveArtifactId, resolveCampaignId } from '../lib/resolvers.js';
+import { CONTEXT_FIELDS } from '../lib/context-fields.js';
 import type { ContextUpdateProposal } from '@/types';
+
+function parseDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) {
+    throw new Error(`Invalid date '${value}'. Use ISO 8601 format (e.g. 2026-04-11).`);
+  }
+  return d;
+}
 
 export function registerPerformanceTools(server: McpServer) {
   // -----------------------------------------------------------------------
@@ -85,8 +96,8 @@ export function registerPerformanceTools(server: McpServer) {
           whatWorked: args.what_worked,
           whatDidnt: args.what_didnt,
           recordedBy: 'mcp',
-          periodStart: args.period_start ? new Date(args.period_start) : undefined,
-          periodEnd: args.period_end ? new Date(args.period_end) : undefined,
+          periodStart: parseDate(args.period_start),
+          periodEnd: parseDate(args.period_end),
         });
 
         // Trigger AI synthesis (best-effort)
@@ -179,16 +190,17 @@ export function registerPerformanceTools(server: McpServer) {
         .boolean()
         .optional()
         .default(false)
-        .describe('Only show overdue reminders (due date in the past)'),
+        .describe('Only show reminders where the artifact has been live for more than 7 days without results logged'),
     },
     async ({ overdue_only }) => {
       try {
         const reminders = await getReminders();
 
         const now = new Date();
+        const OVERDUE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
         const items = reminders
           .filter((r) => {
-            if (overdue_only) return r.recordedAt < now;
+            if (overdue_only) return (now.getTime() - r.recordedAt.getTime()) > OVERDUE_THRESHOLD_MS;
             return true;
           })
           .map((r) => ({
@@ -237,10 +249,10 @@ export function registerPerformanceTools(server: McpServer) {
         // For 'all', 'approved', 'rejected' — query directly
         const where =
           status === 'all'
-            ? { proposedContextUpdates: { not: null as unknown as undefined } }
+            ? { proposedContextUpdates: { not: Prisma.AnyNull } }
             : {
                 contextUpdateStatus: status,
-                proposedContextUpdates: { not: null as unknown as undefined },
+                proposedContextUpdates: { not: Prisma.AnyNull },
               };
 
         const logs = await prisma.performanceLog.findMany({
@@ -307,6 +319,7 @@ export function registerPerformanceTools(server: McpServer) {
                 typeof item === 'object' &&
                 item !== null &&
                 typeof (item as Record<string, unknown>).field === 'string' &&
+                CONTEXT_FIELDS.has((item as Record<string, unknown>).field as string) &&
                 'proposed' in (item as Record<string, unknown>)
             );
 

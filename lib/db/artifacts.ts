@@ -193,6 +193,7 @@ export async function createArtifactVersion(
     title: string;
     content: string;
     createdBy: string;
+    tags?: string[];
   }
 ) {
   const parent = await prisma.artifact.findUnique({ where: { id: parentId } });
@@ -210,7 +211,7 @@ export async function createArtifactVersion(
       contextVersionId: parent.contextVersionId,
       version: parent.version + 1,
       parentArtifactId: parentId,
-      tags: parent.tags,
+      tags: data.tags ?? parent.tags,
       createdBy: data.createdBy,
     },
   });
