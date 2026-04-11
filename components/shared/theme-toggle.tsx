@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { THEME_STORAGE_KEY, THEME_DARK_CLASS } from '@/lib/theme';
+import { THEME_STORAGE_KEY, THEME_DARK_CLASS, persistedThemeValue } from '@/lib/theme';
 
 export function ThemeToggle() {
   const [dark, setDark] = useState(false);
@@ -21,7 +21,7 @@ export function ThemeToggle() {
     setDark(next);
     document.documentElement.classList.toggle(THEME_DARK_CLASS, next);
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, next ? THEME_DARK_CLASS : 'light');
+      localStorage.setItem(THEME_STORAGE_KEY, persistedThemeValue(next));
     } catch {
       // localStorage may be unavailable (private browsing, quota exceeded)
     }
