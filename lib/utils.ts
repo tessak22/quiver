@@ -41,9 +41,14 @@ export function pickDefined<T extends Record<string, unknown>>(
 /**
  * Parse an ISO date string with strict validation, returning null if invalid.
  * Rejects lenient Date parsing (e.g. "2024-02-31" normalizing to March 2)
- * by verifying the parsed date components match the input.
+ * by constructing a date from the extracted components and verifying round-trip.
+ *
+ * Accepts date-only ("2024-01-15") and full ISO-8601 with optional timezone
+ * offsets ("2024-01-15T10:30:00+02:00"). Component validation uses a
+ * UTC-constructed reference date so timezone offsets don't cause false
+ * rejections.
  */
-const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(T(\d{2}):(\d{2})(:(\d{2}))?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 
 export function parseISODate(value: unknown): Date | null {
   if (typeof value !== 'string' || !value.trim()) return null;
@@ -54,13 +59,15 @@ export function parseISODate(value: unknown): Date | null {
   const date = new Date(value);
   if (isNaN(date.getTime())) return null;
 
-  // Verify the parsed date matches the input components to catch
-  // lenient normalization (e.g. Feb 31 → Mar 3)
+  // Validate date components by constructing a UTC reference from the
+  // input year/month/day. If Date normalized them (e.g. Feb 31 → Mar 3),
+  // the reference will differ from the input.
   const year = parseInt(match[1], 10);
   const month = parseInt(match[2], 10);
   const day = parseInt(match[3], 10);
+  const ref = new Date(Date.UTC(year, month - 1, day));
 
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) {
+  if (ref.getUTCFullYear() !== year || ref.getUTCMonth() + 1 !== month || ref.getUTCDate() !== day) {
     return null;
   }
 

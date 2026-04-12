@@ -15,9 +15,9 @@ CREATE INDEX "content_pieces_status_idx" ON "content_pieces"("status");
 -- TASK-029: Add FK relations for orphaned string ID fields
 -- Use NOT VALID to avoid failing on existing orphaned rows, then validate separately.
 
--- Step 1: Clean up any orphaned references before adding constraints
-DELETE FROM "artifacts" a WHERE a."parentArtifactId" IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM "artifacts" p WHERE p."id" = a."parentArtifactId");
+-- Step 1: Null out any orphaned references before adding constraints
+UPDATE "artifacts" SET "parentArtifactId" = NULL WHERE "parentArtifactId" IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM "artifacts" p WHERE p."id" = "artifacts"."parentArtifactId");
 
 UPDATE "content_pieces" SET "artifactId" = NULL WHERE "artifactId" IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM "artifacts" WHERE "id" = "content_pieces"."artifactId");
