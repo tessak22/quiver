@@ -2,7 +2,7 @@
 
 An open-source, self-hosted, AI-powered marketing command center for product teams. Every AI session starts grounded in your product's actual positioning, ICP, competitive landscape, and past performance. The system compounds: every result logged makes the next session smarter.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -35,6 +35,7 @@ Copy `.env.example` to `.env.local` and fill in every value. Here is where to fi
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase: Settings > API > Project API keys > `service_role` (server-side only, never expose to client) |
 | `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com/settings/keys) |
 | `NEXT_PUBLIC_APP_URL` | Your deployment URL (e.g. `https://quiver.yourteam.com`) or `http://localhost:3000` for local dev |
+| `QUIVER_SHARE_SECRET` | Secret for generating session share links. Generate with: `openssl rand -base64 32`. Without this, sharing returns an error. |
 
 ---
 
