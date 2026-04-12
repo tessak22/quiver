@@ -361,10 +361,10 @@ export default function ArtifactsLibraryPage() {
       {/* Bulk action bar — sticky, appears when selection mode is active */}
       {isSelecting && (
         <BulkActionBar
-          selectedCount={selectedIds.size}
+          selectedCount={artifacts.filter((a) => selectedIds.has(a.id)).length}
           totalCount={artifacts.length}
           isAllSelected={
-            artifacts.length > 0 && selectedIds.size === artifacts.length
+            artifacts.length > 0 && artifacts.every((a) => selectedIds.has(a.id))
           }
           campaigns={campaigns}
           onSelectAll={handleSelectAll}
@@ -617,7 +617,7 @@ export default function ArtifactsLibraryPage() {
           onClose={() => setPendingBulk(null)}
           onConfirm={handleBulkConfirm}
           actionLabel={pendingBulk.actionLabel}
-          totalSelected={selectedIds.size}
+          totalSelected={pendingBulk.actionableIds.length}
           skipped={pendingBulk.skipped}
           loading={bulkLoading}
         />
