@@ -121,31 +121,34 @@ export async function bulkStatusChange(
 
   for (const artifact of eligible) {
     try {
-      await prisma.artifact.update({
-        where: { id: artifact.id },
-        data: { status: targetStatus },
-      });
-
-      // Moving to "live" creates a 14-day close-the-loop performance reminder
-      if (targetStatus === 'live') {
-        const full = foundMap.get(artifact.id)!;
-        const reminderDate = new Date();
-        reminderDate.setDate(reminderDate.getDate() + 14);
-
-        await prisma.performanceLog.create({
-          data: {
-            artifactId: artifact.id,
-            campaignId: full.campaignId,
-            logType: 'artifact',
-            qualitativeNotes: `${REMINDER_PREFIX} "${full.title}" — due ${
-              reminderDate.toISOString().split('T')[0]
-            }`,
-            contextUpdateStatus: 'na',
-            recordedBy: userId,
-            recordedAt: reminderDate,
-          },
+      await prisma.$transaction(async (tx) => {
+        await tx.artifact.update({
+          where: { id: artifact.id },
+          data: { status: targetStatus },
         });
-      }
+
+        // Moving to "live" creates a 14-day close-the-loop performance reminder.
+        // Both writes are in one transaction so result reporting matches persisted state.
+        if (targetStatus === 'live') {
+          const full = foundMap.get(artifact.id)!;
+          const reminderDate = new Date();
+          reminderDate.setDate(reminderDate.getDate() + 14);
+
+          await tx.performanceLog.create({
+            data: {
+              artifactId: artifact.id,
+              campaignId: full.campaignId,
+              logType: 'artifact',
+              qualitativeNotes: `${REMINDER_PREFIX} "${full.title}" — due ${
+                reminderDate.toISOString().split('T')[0]
+              }`,
+              contextUpdateStatus: 'na',
+              recordedBy: userId,
+              recordedAt: reminderDate,
+            },
+          });
+        }
+      });
 
       succeeded.push(artifact.id);
     } catch {
