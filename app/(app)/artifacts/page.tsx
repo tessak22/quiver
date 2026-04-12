@@ -1,4 +1,6 @@
 'use client';
+// 'use client' — uses hooks (useState, useEffect, useCallback, useRef) for filter
+//   state, data fetching, and bulk selection; cannot be a Server Component
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -250,6 +252,15 @@ export default function ArtifactsLibraryPage() {
     setBulkError(null);
   }
 
+  const handleToggleSelection = useCallback((artifactId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(artifactId)) next.delete(artifactId);
+      else next.add(artifactId);
+      return next;
+    });
+  }, []);
+
   function handleRequestAction(
     action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive',
     params: Record<string, unknown>
@@ -311,9 +322,30 @@ export default function ArtifactsLibraryPage() {
         throw new Error(data.error ?? 'Bulk operation failed');
       }
 
+      const data = (await res.json()) as {
+        result: {
+          succeeded: string[];
+          failed: Array<{ id: string; reason: string }>;
+          skipped: Array<{ id: string; reason: string }>;
+        };
+      };
+
       setPendingBulk(null);
       handleExitSelectMode();
       await fetchArtifacts();
+
+      // Surface partial failures — handleExitSelectMode() cleared bulkError,
+      // so set after to ensure the message is visible
+      if (data.result.failed.length > 0 || data.result.skipped.length > 0) {
+        const parts: string[] = [];
+        if (data.result.succeeded.length > 0)
+          parts.push(`${data.result.succeeded.length} updated`);
+        if (data.result.skipped.length > 0)
+          parts.push(`${data.result.skipped.length} skipped`);
+        if (data.result.failed.length > 0)
+          parts.push(`${data.result.failed.length} failed`);
+        setBulkError(parts.join(', ') + '.');
+      }
     } catch (err) {
       setBulkError(err instanceof Error ? err.message : 'Bulk operation failed');
     } finally {
@@ -491,15 +523,6 @@ export default function ArtifactsLibraryPage() {
 
             const isSelected = selectedIds.has(artifact.id);
 
-            function toggleSelection() {
-              setSelectedIds((prev) => {
-                const next = new Set(prev);
-                if (next.has(artifact.id)) next.delete(artifact.id);
-                else next.add(artifact.id);
-                return next;
-              });
-            }
-
             return (
               <div key={artifact.id} className="relative">
                 {/* Checkbox overlay — only rendered in select mode */}
@@ -507,7 +530,7 @@ export default function ArtifactsLibraryPage() {
                   <div className="absolute top-3 left-3 z-10">
                     <Checkbox
                       checked={isSelected}
-                      onCheckedChange={toggleSelection}
+                      onCheckedChange={() => handleToggleSelection(artifact.id)}
                       aria-label={`Select "${artifact.title}"`}
                     />
                   </div>
@@ -518,7 +541,7 @@ export default function ArtifactsLibraryPage() {
                   onClick={(e) => {
                     if (isSelecting) {
                       e.preventDefault();
-                      toggleSelection();
+                      handleToggleSelection(artifact.id);
                     }
                   }}
                   className="block"

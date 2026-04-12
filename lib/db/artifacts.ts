@@ -19,8 +19,9 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { REMINDER_PREFIX, ARTIFACT_STATUSES } from '@/types';
 import { getValidTransitions } from '@/lib/artifact-transitions';
-export { getValidTransitions }; // re-export so existing imports from @/lib/db/artifacts still work
 import type { ArtifactStatus, PerformanceSignal } from '@/types';
+
+export { getValidTransitions }; // re-export so existing imports from @/lib/db/artifacts still work
 
 export async function findArtifactMatchesByTitle(
   titlePartial: string,

@@ -179,21 +179,22 @@ export async function bulkCampaignReassign(
     };
   }
 
-  const succeeded: string[] = [];
-
-  for (const artifact of found) {
-    try {
-      await prisma.artifact.update({
-        where: { id: artifact.id },
-        data: { campaignId },
-      });
-      succeeded.push(artifact.id);
-    } catch {
-      failed.push({ id: artifact.id, reason: 'Database error' });
-    }
+  try {
+    await prisma.artifact.updateMany({
+      where: { id: { in: found.map((a) => a.id) } },
+      data: { campaignId },
+    });
+    return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+  } catch {
+    return {
+      succeeded: [],
+      failed: [
+        ...failed,
+        ...found.map((a) => ({ id: a.id, reason: 'Database error' })),
+      ],
+      skipped: [],
+    };
   }
-
-  return { succeeded, failed, skipped: [] };
 }
 
 export async function bulkAddTags(
@@ -247,6 +248,11 @@ export async function bulkRemoveTags(
   for (const artifact of found) {
     try {
       const updated = artifact.tags.filter((t) => !removeSet.has(t));
+      // Skip the write if nothing changed
+      if (updated.length === artifact.tags.length) {
+        succeeded.push(artifact.id);
+        continue;
+      }
       await prisma.artifact.update({
         where: { id: artifact.id },
         data: { tags: updated },
