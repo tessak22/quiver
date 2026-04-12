@@ -201,11 +201,35 @@ async function readJsonResponse<T>(
   fallbackError: string
 ): Promise<T> {
   if (!response.ok) {
-    const data = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(data?.error ?? fallbackError);
+    const rawBody = await response.text();
+    const data = safeParseErrorBody(rawBody);
+
+    if (data?.error) {
+      throw new Error(data.error);
+    }
+
+    const statusMessage = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+    if (rawBody.trim().length > 0) {
+      const preview = rawBody.trim().slice(0, 200);
+      throw new Error(`${fallbackError} (${statusMessage}): ${preview}`);
+    }
+
+    throw new Error(`${fallbackError} (${statusMessage})`);
   }
 
   return response.json() as Promise<T>;
+}
+
+function safeParseErrorBody(rawBody: string): { error?: string } | null {
+  if (!rawBody.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawBody) as { error?: string };
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
