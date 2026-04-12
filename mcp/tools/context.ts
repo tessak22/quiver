@@ -105,7 +105,7 @@ export function registerContextTools(server: McpServer) {
           .filter((f) => !CONTEXT_FIELDS.has(f as never));
         if (invalidFields.length > 0) {
           return error(
-            `Invalid context field(s): ${invalidFields.join(', ')}. Valid fields: ${[...CONTEXT_FIELDS].join(', ')}`
+            `Invalid context field(s): ${invalidFields.join(', ')}. Valid fields: ${Array.from(CONTEXT_FIELDS).join(', ')}`
           );
         }
 
