@@ -38,7 +38,9 @@ vi.mock('@/lib/utils', () => ({
 }));
 
 // Controllable transport mock so error-handling tests can make it throw
-const mockHandleRequest = vi.fn<[Request], Promise<Response>>();
+const mockHandleRequest = vi.fn<[Request], Promise<Response>>().mockResolvedValue(
+  Response.json({ jsonrpc: '2.0', result: {}, id: 1 }),
+);
 
 const mockConnect = vi.fn<[], Promise<void>>().mockResolvedValue(undefined);
 
