@@ -1,3 +1,5 @@
+// 'use client' is required for tab state, form interactions, modal dialogs,
+// and router-driven navigation updates on this page.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
