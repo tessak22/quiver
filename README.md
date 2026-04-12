@@ -147,9 +147,98 @@ Add this to your Cursor MCP settings (`.cursor/mcp.json` in your project, or glo
 }
 ```
 
-### claude.ai with MCP connectors
+### claude.ai Custom Connectors (remote HTTP)
 
-The default transport is stdio (local). To use with claude.ai or other remote MCP clients, you would need to expose the server via a lightweight HTTP wrapper. The stdio transport is the recommended default for local use.
+Quiver ships a production-ready remote MCP endpoint at `/api/mcp` using the
+[MCP Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports).
+No extra build step is needed — the endpoint is part of the Next.js app and is
+deployed automatically to Vercel alongside the rest of Quiver.
+
+#### Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| Vercel deployment | The endpoint is at `https://<your-domain>/api/mcp` |
+| `DATABASE_URL` set in Vercel env vars | Same variable the Next.js app uses |
+| `ANTHROPIC_API_KEY` set in Vercel env vars | Required for AI synthesis tools |
+| `MCP_AUTH_SECRET` set in Vercel env vars | **Optional** — omit for private/internal deployments; required for public internet exposure |
+
+#### Setting up auth (recommended for public deployments)
+
+1. Generate a secure random string: `openssl rand -hex 32`
+2. Add it as `MCP_AUTH_SECRET` in your Vercel project settings → Environment Variables
+3. Redeploy (or trigger a new build) so the variable takes effect
+
+Without `MCP_AUTH_SECRET` set, the endpoint accepts all requests — only do
+this on private/VPC-restricted deployments.
+
+#### Adding the connector in Claude browser
+
+1. Open Claude at [claude.ai](https://claude.ai) and sign in
+2. Go to **Settings → Integrations → Add custom integration**
+3. Enter the connector URL:
+   ```
+   https://<your-vercel-domain>/api/mcp
+   ```
+4. If `MCP_AUTH_SECRET` is set, add an **Authorization header**:
+   ```
+   Authorization: Bearer <your-MCP_AUTH_SECRET-value>
+   ```
+5. Click **Connect** — Claude will call the endpoint to discover available tools
+
+#### Verifying the endpoint
+
+Run the included smoke test to confirm the endpoint is responding correctly
+before adding it to Claude:
+
+```bash
+# Against local dev server (no auth)
+node mcp/smoke-test.mjs
+
+# Against deployed instance with auth token
+node mcp/smoke-test.mjs https://quiver.example.com/api/mcp your-secret-token
+
+# Via env var
+MCP_AUTH_SECRET=your-secret node mcp/smoke-test.mjs https://quiver.example.com/api/mcp
+```
+
+The smoke test checks that `initialize` succeeds, `tools/list` returns all
+tools, and `get_dashboard_summary` (a read tool) responds correctly.
+
+#### Vercel runtime notes
+
+- The endpoint uses the **Node.js runtime** (required for Prisma). Edge runtime is not supported.
+- `maxDuration` is set to **60 seconds** (Vercel Hobby tier limit). On Pro, you can raise this to 300 s in `app/api/mcp/route.ts` if long-running tools (e.g. `log_performance` with AI synthesis) time out.
+- Each request creates a fresh MCP server instance (stateless mode). This is intentional — Vercel serverless does not share in-memory state between invocations.
+
+#### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `401 Unauthorized` | Token mismatch | Check `MCP_AUTH_SECRET` matches the `Authorization: Bearer …` header in connector settings |
+| `404` on connector URL | Route not deployed | Ensure `app/api/mcp/route.ts` is committed and Vercel build succeeded |
+| `500` on tool calls | Missing env var | Confirm `DATABASE_URL` and `ANTHROPIC_API_KEY` are set in Vercel |
+| Tool call times out | Vercel Hobby 60 s limit | Upgrade to Pro and raise `maxDuration` in the route file |
+| `DB connection` error locally | Prisma not connected | Run the Next.js dev server (`npm run dev`) with `DATABASE_URL` set in `.env.local` |
+
+#### Local dev with remote transport
+
+You can test the HTTP endpoint locally against your dev server:
+
+```bash
+# Start the dev server
+npm run dev
+
+# In another terminal, run the smoke test
+node mcp/smoke-test.mjs http://localhost:3000/api/mcp
+```
+
+#### Keeping stdio working
+
+The local `stdio` transport (`mcp/index.ts`) is **not affected** by this change.
+Claude Desktop, Cursor, and Windsurf users continue to use the stdio config
+documented above. The HTTP endpoint is additive — it runs as a Next.js API
+route and does not replace the standalone MCP server.
 
 ### Available Tools
 
