@@ -163,7 +163,7 @@ Performance + proposal records.
 | whatDidnt | text | Synthesis summary |
 | proposedContextUpdates | jsonb | Proposed context edits |
 | contextUpdateStatus | text | `pending` / `approved` / `rejected` / `na` |
-| recordedBy | text | Actor (`mcp` for MCP writes) |
+| recordedBy | uuid FK | Team member (or `mcp` for MCP-initiated writes) |
 | recordedAt | timestamptz | Auto-set |
 | periodStart | timestamptz | Optional |
 | periodEnd | timestamptz | Optional |
