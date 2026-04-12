@@ -6,7 +6,7 @@
  *   - generateSlug: slug generation from titles with uniqueness suffix
  *   - getContentPerformanceSignal: performance signal classification
  *
- * generateSlug uses Prisma internally, so we mock prisma.contentPiece.findUnique
+ * generateSlug uses Prisma internally, so we mock prisma.contentPiece.findMany
  * to control slug collision behavior.
  */
 
@@ -18,6 +18,7 @@ vi.mock('@/lib/db', () => ({
   prisma: {
     contentPiece: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -34,83 +35,79 @@ describe('generateSlug', () => {
   });
 
   it('converts a simple title to a lowercase hyphenated slug', async () => {
-    vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([]);
     const slug = await generateSlug('Hello World');
     expect(slug).toBe('hello-world');
   });
 
   it('strips special characters', async () => {
-    vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([]);
     const slug = await generateSlug("What's New in v2.0?");
     expect(slug).toBe('what-s-new-in-v2-0');
   });
 
   it('collapses consecutive non-alphanumeric characters into a single hyphen', async () => {
-    vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([]);
     const slug = await generateSlug('Hello --- World!!!');
     expect(slug).toBe('hello-world');
   });
 
   it('strips leading and trailing hyphens', async () => {
-    vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([]);
     const slug = await generateSlug('---Hello World---');
     expect(slug).toBe('hello-world');
   });
 
   it('falls back to "untitled" for punctuation-only titles', async () => {
-    vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([]);
     const slug = await generateSlug('!!!@@@###');
     expect(slug).toBe('untitled');
   });
 
   it('handles titles with unicode characters', async () => {
-    vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([]);
     const slug = await generateSlug('Cafe au Lait');
     expect(slug).toBe('cafe-au-lait');
   });
 
   it('appends -2 when the base slug already exists', async () => {
-    vi.mocked(prisma.contentPiece.findUnique)
-      .mockResolvedValueOnce({ id: 'existing-1' } as never) // base slug taken
-      .mockResolvedValueOnce(null); // base-2 available
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([
+      { slug: 'hello-world' },
+    ] as never);
     const slug = await generateSlug('Hello World');
     expect(slug).toBe('hello-world-2');
   });
 
   it('increments suffix until an available slug is found', async () => {
-    vi.mocked(prisma.contentPiece.findUnique)
-      .mockResolvedValueOnce({ id: 'existing-1' } as never) // base taken
-      .mockResolvedValueOnce({ id: 'existing-2' } as never) // base-2 taken
-      .mockResolvedValueOnce({ id: 'existing-3' } as never) // base-3 taken
-      .mockResolvedValueOnce(null); // base-4 available
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([
+      { slug: 'hello-world' },
+      { slug: 'hello-world-2' },
+      { slug: 'hello-world-3' },
+    ] as never);
     const slug = await generateSlug('Hello World');
     expect(slug).toBe('hello-world-4');
   });
 
-  it('queries prisma for each collision check', async () => {
-    vi.mocked(prisma.contentPiece.findUnique)
-      .mockResolvedValueOnce({ id: 'existing-1' } as never)
-      .mockResolvedValueOnce(null);
+  it('fetches all matching slugs in a single query', async () => {
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([
+      { slug: 'hello-world' },
+    ] as never);
     await generateSlug('Hello World');
-    expect(prisma.contentPiece.findUnique).toHaveBeenCalledTimes(2);
-    expect(prisma.contentPiece.findUnique).toHaveBeenCalledWith({
-      where: { slug: 'hello-world' },
-      select: { id: true },
-    });
-    expect(prisma.contentPiece.findUnique).toHaveBeenCalledWith({
-      where: { slug: 'hello-world-2' },
-      select: { id: true },
+    expect(prisma.contentPiece.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.contentPiece.findMany).toHaveBeenCalledWith({
+      where: { slug: { startsWith: 'hello-world' } },
+      select: { slug: true },
     });
   });
 
   it('handles numbers in titles', async () => {
-    vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([]);
     const slug = await generateSlug('Top 10 Tips for 2024');
     expect(slug).toBe('top-10-tips-for-2024');
   });
 
   it('handles single-word titles', async () => {
-    vi.mocked(prisma.contentPiece.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.contentPiece.findMany).mockResolvedValue([]);
     const slug = await generateSlug('Guide');
     expect(slug).toBe('guide');
   });

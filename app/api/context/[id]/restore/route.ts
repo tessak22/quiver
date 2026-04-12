@@ -1,20 +1,16 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
 import { restoreContextVersion } from '@/lib/db/context';
 
 export async function POST(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const version = await restoreContextVersion(params.id, user.id);
+    const version = await restoreContextVersion(params.id, auth.id);
     return NextResponse.json({ version });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to restore version';

@@ -16,15 +16,14 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
 import { loadSkills } from '@/lib/ai/skills';
+import { safeErrorMessage } from '@/lib/utils';
 
 export async function GET(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await requireRole('viewer');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const url = new URL(request.url);
@@ -44,7 +43,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ content });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Skill not found' },
+      { error: safeErrorMessage(err, 'Skill not found') },
       { status: 404 }
     );
   }
