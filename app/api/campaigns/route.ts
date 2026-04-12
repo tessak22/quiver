@@ -1,16 +1,13 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import { getCampaigns, createCampaign } from '@/lib/db/campaigns';
 import { CAMPAIGN_STATUSES, CAMPAIGN_PRIORITIES } from '@/types';
-import type { CampaignStatus } from '@/types';
+import type { CampaignStatus, CampaignPriority } from '@/types';
 
 export async function GET(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('viewer');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const url = new URL(request.url);
   const status = url.searchParams.get('status') as CampaignStatus | null;
@@ -19,27 +16,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Invalid status filter' }, { status: 400 });
   }
 
-  const campaigns = await getCampaigns({
-    status: status ?? undefined,
-  });
+  try {
+    const campaigns = await getCampaigns({
+      status: status ?? undefined,
+    });
 
-  return NextResponse.json({ campaigns });
+    return NextResponse.json({ campaigns });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch campaigns') },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+  const { data: body, error } = await parseJsonBody(request);
+  if (error) return error;
 
   // Validate required fields
   if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
@@ -47,26 +43,45 @@ export async function POST(request: Request) {
   }
 
   // Validate status if provided
-  if (body.status && !CAMPAIGN_STATUSES.includes(body.status)) {
+  if (body.status && !CAMPAIGN_STATUSES.includes(body.status as CampaignStatus)) {
     return NextResponse.json({ error: 'Invalid campaign status' }, { status: 400 });
   }
 
   // Validate priority if provided
-  if (body.priority && !CAMPAIGN_PRIORITIES.includes(body.priority)) {
+  if (body.priority && !CAMPAIGN_PRIORITIES.includes(body.priority as CampaignPriority)) {
     return NextResponse.json({ error: 'Invalid campaign priority' }, { status: 400 });
   }
 
-  const campaign = await createCampaign({
-    name: body.name.trim(),
-    description: body.description ?? undefined,
-    goal: body.goal ?? undefined,
-    channels: body.channels ?? [],
-    status: body.status ?? 'planning',
-    priority: body.priority ?? 'medium',
-    startDate: body.startDate ?? undefined,
-    endDate: body.endDate ?? undefined,
-    ownerId: body.ownerId ?? undefined,
-  });
+  // Validate date fields if provided
+  if (body.startDate !== undefined) {
+    const parsed = parseISODate(body.startDate);
+    if (!parsed) return NextResponse.json({ error: 'Invalid startDate format. Use ISO 8601 (e.g. 2026-04-11).' }, { status: 400 });
+    body.startDate = parsed.toISOString();
+  }
+  if (body.endDate !== undefined) {
+    const parsed = parseISODate(body.endDate);
+    if (!parsed) return NextResponse.json({ error: 'Invalid endDate format. Use ISO 8601 (e.g. 2026-04-11).' }, { status: 400 });
+    body.endDate = parsed.toISOString();
+  }
 
-  return NextResponse.json({ campaign }, { status: 201 });
+  try {
+    const campaign = await createCampaign({
+      name: (body.name as string).trim(),
+      description: body.description as string | undefined ?? undefined,
+      goal: body.goal as string | undefined ?? undefined,
+      channels: (body.channels as string[]) ?? [],
+      status: (body.status as CampaignStatus) ?? 'planning',
+      priority: (body.priority as CampaignPriority) ?? 'medium',
+      startDate: body.startDate as string | undefined ?? undefined,
+      endDate: body.endDate as string | undefined ?? undefined,
+      ownerId: body.ownerId as string | undefined ?? undefined,
+    });
+
+    return NextResponse.json({ campaign }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to create campaign') },
+      { status: 500 }
+    );
+  }
 }

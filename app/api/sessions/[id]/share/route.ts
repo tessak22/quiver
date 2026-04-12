@@ -1,16 +1,17 @@
 import crypto from 'crypto';
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
 import { getSession } from '@/lib/db/sessions';
-import { getTeamMember } from '@/lib/db/team';
+import { safeErrorMessage } from '@/lib/utils';
 
 /**
  * Generates a deterministic share token for a session.
  * The token is a truncated SHA-256 hash of the session ID + a secret,
  * so it can be validated without storing anything in the database.
+ * Produces a 128-bit (32 hex character) token.
  */
 function generateShareToken(sessionId: string): string {
-  const secret = process.env.QUIVER_SHARE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = process.env.QUIVER_SHARE_SECRET;
   if (!secret) {
     throw new Error('QUIVER_SHARE_SECRET is not configured — cannot generate share tokens. Set it in your environment variables.');
   }
@@ -18,7 +19,7 @@ function generateShareToken(sessionId: string): string {
     .createHash('sha256')
     .update(sessionId + secret)
     .digest('hex')
-    .substring(0, 16);
+    .substring(0, 32);
 }
 
 /**
@@ -40,44 +41,42 @@ export async function POST(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await requireRole('member');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // POST requires team membership — middleware exempts share routes for GET (public viewing)
-  const member = await getTeamMember(user.id);
-  if (!member) {
-    return NextResponse.json({ error: 'Not a team member' }, { status: 403 });
-  }
-
-  const session = await getSession(params.id);
-  if (!session) {
-    return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-  }
-
-  let token: string;
   try {
-    token = generateShareToken(params.id);
+    const session = await getSession(params.id);
+    if (!session) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    let token: string;
+    try {
+      token = generateShareToken(params.id);
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Failed to generate share link' },
+        { status: 500 }
+      );
+    }
+
+    const shareUrl = `/shared/session/${params.id}?token=${token}`;
+
+    return NextResponse.json({ shareUrl });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to generate share link' },
+      { error: safeErrorMessage(err, 'Failed to generate share link') },
       { status: 500 }
     );
   }
-
-  const shareUrl = `/shared/session/${params.id}?token=${token}`;
-
-  return NextResponse.json({ shareUrl });
 }
 
 /**
  * GET /api/sessions/[id]/share?token=...
  * Validates the share token and returns session data for public viewing.
+ * This is a public endpoint — no auth required (token IS the auth).
  */
 export async function GET(
   request: Request,
@@ -110,20 +109,27 @@ export async function GET(
     );
   }
 
-  const session = await getSession(params.id);
-  if (!session) {
-    return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-  }
+  try {
+    const session = await getSession(params.id);
+    if (!session) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
 
-  // Return a read-only subset of session data
-  return NextResponse.json({
-    session: {
-      id: session.id,
-      title: session.title,
-      mode: session.mode,
-      messages: session.messages,
-      createdAt: session.createdAt,
-      campaign: session.campaign,
-    },
-  });
+    // Return a read-only subset of session data
+    return NextResponse.json({
+      session: {
+        id: session.id,
+        title: session.title,
+        mode: session.mode,
+        messages: session.messages,
+        createdAt: session.createdAt,
+        campaign: session.campaign,
+      },
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch shared session') },
+      { status: 500 }
+    );
+  }
 }

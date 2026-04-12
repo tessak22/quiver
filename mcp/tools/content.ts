@@ -155,6 +155,27 @@ export function registerContentTools(server: McpServer) {
     },
     async (args) => {
       try {
+        // Validate content_type
+        const VALID_CONTENT_TYPES = [
+          'blog_post', 'case_study', 'landing_page', 'changelog',
+          'newsletter', 'social_thread', 'video_script', 'doc', 'other',
+        ] as const;
+        if (!VALID_CONTENT_TYPES.includes(args.content_type as typeof VALID_CONTENT_TYPES[number])) {
+          return error(
+            `Invalid content_type '${args.content_type}'. Valid values: ${VALID_CONTENT_TYPES.join(', ')}`
+          );
+        }
+
+        // Validate status
+        const VALID_STATUSES = [
+          'draft', 'review', 'approved', 'published', 'archived',
+        ] as const;
+        if (!VALID_STATUSES.includes(args.status as typeof VALID_STATUSES[number])) {
+          return error(
+            `Invalid status '${args.status}'. Valid values: ${VALID_STATUSES.join(', ')}`
+          );
+        }
+
         const campaignId = await resolveCampaignId(args.campaign_id, args.campaign_name);
         const activeContext = await getActiveContext();
 
@@ -223,6 +244,33 @@ export function registerContentTools(server: McpServer) {
     },
     async (args) => {
       try {
+        // Validate content_type if provided
+        const VALID_CONTENT_TYPES = [
+          'blog_post', 'case_study', 'landing_page', 'changelog',
+          'newsletter', 'social_thread', 'video_script', 'doc', 'other',
+        ] as const;
+        if (
+          args.content_type !== undefined &&
+          !VALID_CONTENT_TYPES.includes(args.content_type as typeof VALID_CONTENT_TYPES[number])
+        ) {
+          return error(
+            `Invalid content_type '${args.content_type}'. Valid values: ${VALID_CONTENT_TYPES.join(', ')}`
+          );
+        }
+
+        // Validate status if provided
+        const VALID_STATUSES = [
+          'draft', 'review', 'approved', 'published', 'archived',
+        ] as const;
+        if (
+          args.status !== undefined &&
+          !VALID_STATUSES.includes(args.status as typeof VALID_STATUSES[number])
+        ) {
+          return error(
+            `Invalid status '${args.status}'. Valid values: ${VALID_STATUSES.join(', ')}`
+          );
+        }
+
         const piece = await resolveContentPiece(args.content_id, args.slug);
         if (!piece) {
           return error('Content piece not found. Provide content_id or slug.');
@@ -277,6 +325,17 @@ export function registerContentTools(server: McpServer) {
     },
     async (args) => {
       try {
+        // Validate channel
+        const VALID_CHANNELS = [
+          'website', 'dev_to', 'hashnode', 'medium', 'newsletter',
+          'linkedin', 'twitter', 'youtube', 'other',
+        ] as const;
+        if (!VALID_CHANNELS.includes(args.channel as typeof VALID_CHANNELS[number])) {
+          return error(
+            `Invalid channel '${args.channel}'. Valid values: ${VALID_CHANNELS.join(', ')}`
+          );
+        }
+
         const piece = await resolveContentPiece(args.content_id, args.slug);
         if (!piece) {
           return error('Content piece not found. Provide content_id or slug.');

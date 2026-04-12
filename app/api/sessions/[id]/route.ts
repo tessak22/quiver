@@ -1,53 +1,70 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
 import { getSession, updateSessionTitle, archiveSession } from '@/lib/db/sessions';
+import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 
 export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await requireRole('viewer');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const session = await getSession(params.id);
-  if (!session) {
-    return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-  }
+  try {
+    const session = await getSession(params.id);
+    if (!session) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
 
-  return NextResponse.json({ session });
+    return NextResponse.json({ session });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch session') },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PATCH(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await requireRole('member');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body;
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const body = parsed.data;
+
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+    // Fetch session and verify ownership before any modification
+    const existing = await getSession(params.id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+    if (existing.createdBy !== auth.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
-  if (body.title !== undefined) {
-    const session = await updateSessionTitle(params.id, body.title);
-    return NextResponse.json({ session });
-  }
+    if (body.title !== undefined) {
+      const session = await updateSessionTitle(params.id, body.title as string);
+      return NextResponse.json({ session });
+    }
 
-  if (body.isArchived === true) {
-    const session = await archiveSession(params.id);
-    return NextResponse.json({ session });
-  }
+    if (body.isArchived === true) {
+      const session = await archiveSession(params.id);
+      return NextResponse.json({ session });
+    }
 
-  return NextResponse.json({ error: 'No valid update fields' }, { status: 400 });
+    return NextResponse.json({ error: 'No valid update fields' }, { status: 400 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to update session') },
+      { status: 500 }
+    );
+  }
 }

@@ -39,10 +39,7 @@ export type CampaignPriority = 'high' | 'medium' | 'low';
 // Performance log entry types
 export type PerformanceLogType = 'artifact' | 'campaign' | 'channel' | 'audience_segment';
 
-// Context update sources
-export type ContextUpdateSource = 'manual' | 'ai_proposed' | 'feedback_session';
-
-// Context update proposal status
+// Context update proposal status (used as Prisma enum values)
 export type ContextUpdateStatus = 'pending' | 'approved' | 'rejected' | 'na';
 
 // Team member roles
@@ -127,8 +124,6 @@ export const CONTACT_STAGE_LABELS: Record<ContactStage, string> = {
 export type ContentType = 'blog_post' | 'case_study' | 'landing_page' | 'changelog' | 'newsletter' | 'social_thread' | 'video_script' | 'doc' | 'other';
 export type ContentStatus = 'draft' | 'review' | 'approved' | 'published' | 'archived';
 export type DistributionChannel = 'website' | 'dev_to' | 'hashnode' | 'medium' | 'newsletter' | 'linkedin' | 'twitter' | 'youtube' | 'other';
-export type MetricSnapshotSource = 'manual' | 'mcp_pull' | 'scheduled_sync';
-
 export const CONTENT_TYPES: ContentType[] = ['blog_post', 'case_study', 'landing_page', 'changelog', 'newsletter', 'social_thread', 'video_script', 'doc', 'other'];
 export const CONTENT_STATUSES: ContentStatus[] = ['draft', 'review', 'approved', 'published', 'archived'];
 export const DISTRIBUTION_CHANNELS: DistributionChannel[] = ['website', 'dev_to', 'hashnode', 'medium', 'newsletter', 'linkedin', 'twitter', 'youtube', 'other'];

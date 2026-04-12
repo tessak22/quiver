@@ -5,6 +5,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -61,9 +62,9 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
         <div className="flex h-full flex-col">
           {/* Logo */}
           <div className="flex h-14 items-center border-b px-4">
-            <a href="/dashboard" className="text-lg font-bold tracking-tight">
+            <Link href="/dashboard" className="text-lg font-bold tracking-tight">
               Quiver
-            </a>
+            </Link>
           </div>
 
           {/* Navigation */}
@@ -71,7 +72,7 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               return (
-                <a
+                <Link
                   key={item.href}
                   href={item.href}
                   className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
@@ -87,7 +88,7 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
                       {pendingProposals}
                     </Badge>
                   )}
-                </a>
+                </Link>
               );
             })}
           </nav>
@@ -104,10 +105,10 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
               </div>
             </div>
             <div className="mt-2 flex items-center gap-3">
-              <a href="/settings" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+              <Link href="/settings" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                 <Settings className="h-3 w-3" />
                 Settings
-              </a>
+              </Link>
               <form action="/api/auth/logout" method="POST" className="inline">
                 <button type="submit" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                   <LogOut className="h-3 w-3" />
@@ -138,7 +139,7 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
 
           <div className="flex items-center gap-3">
             {contextVersion !== null && (
-              <a href="/context" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+              <Link href="/context" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
                 <span className="h-2 w-2 rounded-full bg-green-500" />
                 Context v{contextVersion}
                 {pendingProposals > 0 && (
@@ -146,7 +147,7 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
                     {pendingProposals} pending
                   </Badge>
                 )}
-              </a>
+              </Link>
             )}
             <ThemeToggle />
           </div>

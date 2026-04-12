@@ -145,8 +145,10 @@ function SaveToContextButton({
 
       setSaved(true);
       setOpen(false);
-    } catch {
-      // Silently close — the user can retry
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to propose context update';
+      window.alert(message);
       setOpen(false);
     } finally {
       setSaving(false);

@@ -1,24 +1,23 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getAuthUser } from '@/lib/auth';
+import { parseJsonBody } from '@/lib/utils';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { prisma } from '@/lib/db';
 import { createContextVersion } from '@/lib/db/context';
 import { DEFAULT_CAMPAIGN_NAME } from '@/types';
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await getAuthUser();
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!auth.email) {
+    return NextResponse.json({ error: 'Email is required' }, { status: 400 });
   }
 
-  let data;
-  try {
-    data = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const data = parsed.data;
 
   // First-run guard: only allow onboarding if no active context exists
   // This prevents authenticated non-members from self-promoting to admin
@@ -44,14 +43,14 @@ export async function POST(request: Request) {
 
   // Parse arrays from newline-separated strings
   const wordsToUse = data.wordsToUse
-    ? data.wordsToUse.split('\n').map((w: string) => w.trim()).filter(Boolean)
+    ? (data.wordsToUse as string).split('\n').map((w: string) => w.trim()).filter(Boolean)
     : [];
   const wordsToAvoid = data.wordsToAvoid
-    ? data.wordsToAvoid.split('\n').map((w: string) => w.trim()).filter(Boolean)
+    ? (data.wordsToAvoid as string).split('\n').map((w: string) => w.trim()).filter(Boolean)
     : [];
 
   // Parse competitors into structured JSON
-  const competitors = (data.competitors || [])
+  const competitors = ((data.competitors as Array<{ name: string; notes: string }>) || [])
     .filter((c: { name: string }) => c.name.trim())
     .map((c: { name: string; notes: string }) => ({
       name: c.name.trim(),
@@ -59,22 +58,26 @@ export async function POST(request: Request) {
     }));
 
   // Parse messaging pillars from freeform text
-  const pillars = data.valuePillars
+  const pillars = (data.valuePillars as string)
     .split('\n')
     .filter((line: string) => line.trim())
     .map((line: string) => ({ pillar: line.trim() }));
 
   // Create team member record for the admin
   const existingMember = await prisma.teamMember.findUnique({
-    where: { id: user.id },
+    where: { id: auth.id },
   });
 
   if (!existingMember) {
+    // Access the full Supabase user for metadata
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
     await prisma.teamMember.create({
       data: {
-        id: user.id,
-        name: user.user_metadata?.name || user.email?.split('@')[0] || 'Admin',
-        email: user.email!,
+        id: auth.id,
+        name: user?.user_metadata?.name || auth.email.split('@')[0] || 'Admin',
+        email: auth.email,
         role: 'admin',
       },
     });
@@ -82,7 +85,7 @@ export async function POST(request: Request) {
 
   // Create the first context version via the data layer
   await createContextVersion({
-    positioningStatement: data.positioningStatement || `${data.productName}: ${data.oneLiner}`,
+    positioningStatement: (data.positioningStatement as string) || `${data.productName}: ${data.oneLiner}`,
     icpDefinition: {
       definition: data.icpDefinition,
       decisionMaker: data.decisionMaker || '',
@@ -92,12 +95,12 @@ export async function POST(request: Request) {
     messagingPillars: pillars,
     competitiveLandscape: competitors.length > 0 ? competitors : null,
     customerLanguage: data.customerLanguage
-      ? { verbatims: data.customerLanguage.split('\n').filter(Boolean) }
+      ? { verbatims: (data.customerLanguage as string).split('\n').filter(Boolean) }
       : null,
     brandVoice: null,
     wordsToUse,
     wordsToAvoid,
-    updatedBy: user.id,
+    updatedBy: auth.id,
     updateSource: 'manual',
     changeSummary: 'Initial context created during onboarding',
   });
@@ -114,7 +117,7 @@ export async function POST(request: Request) {
 
   // Send team invites directly via Supabase admin API (not via HTTP self-call)
   if (data.teamEmails) {
-    const emails = data.teamEmails
+    const emails = (data.teamEmails as string)
       .split('\n')
       .map((e: string) => e.trim())
       .filter((e: string) => e && e.includes('@'));

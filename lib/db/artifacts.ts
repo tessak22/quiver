@@ -20,10 +20,6 @@ import { prisma } from '@/lib/db';
 import { REMINDER_PREFIX, ARTIFACT_STATUSES } from '@/types';
 import type { ArtifactStatus, PerformanceSignal } from '@/types';
 
-export function isReminderLog(log: { qualitativeNotes: string | null }): boolean {
-  return log.qualitativeNotes?.startsWith(REMINDER_PREFIX) ?? false;
-}
-
 export async function createArtifact(data: {
   title: string;
   type: string;
@@ -220,14 +216,17 @@ export async function createArtifactVersion(
 export async function getArtifactVersions(artifactId: string) {
   type ArtifactRow = Awaited<ReturnType<typeof prisma.artifact.findUniqueOrThrow>>;
 
-  // Find the root artifact (follow parentArtifactId chain)
+  const MAX_DEPTH = 100;
+
+  // Find the root artifact (follow parentArtifactId chain upward)
   const initial = await prisma.artifact.findUnique({ where: { id: artifactId } });
   if (!initial) return [];
 
   let root: ArtifactRow = initial;
+  let upwardDepth = 0;
 
-  // Go up to the root
   while (root.parentArtifactId) {
+    if (++upwardDepth > MAX_DEPTH) break;
     const parent = await prisma.artifact.findUnique({
       where: { id: root.parentArtifactId },
     });
@@ -235,23 +234,29 @@ export async function getArtifactVersions(artifactId: string) {
     root = parent;
   }
 
-  // Get all versions descending from root
-  const versions: ArtifactRow[] = [root];
-  let children = await prisma.artifact.findMany({
-    where: { parentArtifactId: root.id },
-    orderBy: { version: 'asc' },
-  });
+  // Collect all versions descending from root using set-based breadth-first traversal
+  const allVersions: ArtifactRow[] = [root];
+  const seenIds = new Set([root.id]);
+  let currentIds = [root.id];
+  let downwardDepth = 0;
 
-  while (children.length > 0) {
-    versions.push(...children);
-    const childIds = children.map((c) => c.id);
-    children = await prisma.artifact.findMany({
-      where: { parentArtifactId: { in: childIds } },
+  while (currentIds.length > 0) {
+    if (++downwardDepth > MAX_DEPTH) break;
+    const children = await prisma.artifact.findMany({
+      where: { parentArtifactId: { in: currentIds } },
       orderBy: { version: 'asc' },
+    });
+    if (children.length === 0) break;
+    currentIds = children.filter((c) => !seenIds.has(c.id)).map((c) => c.id);
+    children.forEach((c) => {
+      if (!seenIds.has(c.id)) {
+        seenIds.add(c.id);
+        allVersions.push(c);
+      }
     });
   }
 
-  return versions.sort((a, b) => b.version - a.version);
+  return allVersions.sort((a, b) => b.version - a.version);
 }
 
 // Get close-the-loop reminders (overdue or upcoming)

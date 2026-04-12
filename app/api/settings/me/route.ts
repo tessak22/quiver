@@ -1,20 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { getTeamMemberRole } from '@/lib/db/team';
+import { requireRole } from '@/lib/auth';
 
 export async function GET() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('viewer');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  const member = await getTeamMemberRole(user.id);
-
-  if (!member) {
-    return NextResponse.json({ error: 'Not a team member' }, { status: 403 });
-  }
-
-  return NextResponse.json({ id: member.id, role: member.role });
+  return NextResponse.json({ id: auth.id, role: auth.role });
 }

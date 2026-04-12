@@ -24,7 +24,7 @@ import type { CampaignStatus, CampaignPriority } from '@/types';
 // Types
 // -------------------------------------------------------------------------
 
-export interface CampaignFilters {
+interface CampaignFilters {
   status?: CampaignStatus;
 }
 
@@ -33,7 +33,7 @@ export interface CampaignLink {
   url: string;
 }
 
-export interface CreateCampaignInput {
+interface CreateCampaignInput {
   name: string;
   description?: string;
   goal?: string;
@@ -46,7 +46,7 @@ export interface CreateCampaignInput {
   links?: CampaignLink[];
 }
 
-export interface UpdateCampaignInput {
+interface UpdateCampaignInput {
   name?: string;
   description?: string;
   goal?: string;
@@ -219,12 +219,6 @@ export async function getCampaignArtifacts(campaignId: string) {
       createdAt: true,
       updatedAt: true,
     },
-  });
-}
-
-export async function getCampaignByName(name: string) {
-  return prisma.campaign.findFirst({
-    where: { name },
   });
 }
 
