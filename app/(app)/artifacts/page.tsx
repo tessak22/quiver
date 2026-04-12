@@ -169,6 +169,9 @@ export default function ArtifactsLibraryPage() {
     params: Record<string, unknown>;
     actionLabel: string;
     skipped: Array<{ id: string; reason: string }>;
+    // IDs snapshot from dialog-open time — only those visible and analyzed,
+    // not the full selectedIds set which may include filter-invisible artifacts
+    actionableIds: string[];
   } | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -297,7 +300,7 @@ export default function ArtifactsLibraryPage() {
         ? 'Remove Tags'
         : 'Archive';
 
-    setPendingBulk({ action, params, actionLabel, skipped });
+    setPendingBulk({ action, params, actionLabel, skipped, actionableIds: selected.map((a) => a.id) });
   }
 
   async function handleBulkConfirm() {
@@ -305,8 +308,8 @@ export default function ArtifactsLibraryPage() {
     setBulkLoading(true);
     setBulkError(null);
 
-    const { action, params } = pendingBulk;
-    const ids = Array.from(selectedIds);
+    const { action, params, actionableIds } = pendingBulk;
+    const ids = actionableIds;
     const body =
       action === 'archive' ? { action: 'archive', ids } : { action, ids, ...params };
 
@@ -383,7 +386,13 @@ export default function ArtifactsLibraryPage() {
           {artifacts.length > 0 && (
             <Button
               variant="outline"
-              onClick={() => setIsSelecting((v) => !v)}
+              onClick={() => {
+                if (isSelecting) {
+                  handleExitSelectMode();
+                } else {
+                  setIsSelecting(true);
+                }
+              }}
             >
               {isSelecting ? 'Cancel Select' : 'Select'}
             </Button>
