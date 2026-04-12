@@ -1,4 +1,6 @@
 'use client';
+// 'use client' — uses hooks (useState, useEffect, useCallback, useRef) for filter
+//   state, data fetching, and bulk selection; cannot be a Server Component
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -14,6 +16,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { ArtifactType, ArtifactStatus, PerformanceSignal } from '@/types';
+import { Checkbox } from '@/components/ui/checkbox';
+import { BulkActionBar } from '@/components/artifacts/bulk-action-bar';
+import { BulkConfirmDialog } from '@/components/artifacts/bulk-confirm-dialog';
+import { getValidTransitions } from '@/lib/artifact-transitions';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -155,6 +161,21 @@ export default function ArtifactsLibraryPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Bulk selection state (issue #41)
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingBulk, setPendingBulk] = useState<{
+    action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive';
+    params: Record<string, unknown>;
+    actionLabel: string;
+    skipped: Array<{ id: string; reason: string }>;
+    // IDs snapshot from dialog-open time — only those visible and analyzed,
+    // not the full selectedIds set which may include filter-invisible artifacts
+    actionableIds: string[];
+  } | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
   // Debounce search input
   useEffect(() => {
     if (debounceTimerRef.current) {
@@ -218,8 +239,141 @@ export default function ArtifactsLibraryPage() {
     fetchArtifacts();
   }, [fetchArtifacts]);
 
+  // Bulk selection handlers (issue #41)
+
+  function handleSelectAll() {
+    setSelectedIds(new Set(artifacts.map((a) => a.id)));
+  }
+
+  function handleDeselectAll() {
+    setSelectedIds(new Set());
+  }
+
+  function handleExitSelectMode() {
+    setIsSelecting(false);
+    setSelectedIds(new Set());
+    setBulkError(null);
+  }
+
+  const handleToggleSelection = useCallback((artifactId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(artifactId)) next.delete(artifactId);
+      else next.add(artifactId);
+      return next;
+    });
+  }, []);
+
+  function handleRequestAction(
+    action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive',
+    params: Record<string, unknown>
+  ) {
+    const selected = artifacts.filter((a) => selectedIds.has(a.id));
+    let skipped: Array<{ id: string; reason: string }> = [];
+
+    if (action === 'status_change' || action === 'archive') {
+      const targetStatus =
+        action === 'archive' ? 'archived' : (params.targetStatus as string);
+      skipped = selected
+        .filter(
+          (a) =>
+            a.status === targetStatus ||
+            !getValidTransitions(a.status).includes(targetStatus)
+        )
+        .map((a) => ({
+          id: a.id,
+          reason:
+            a.status === targetStatus
+              ? `"${a.title}" is already ${targetStatus}`
+              : `"${a.title}": ${a.status} → ${targetStatus} is not a valid transition`,
+        }));
+    }
+
+    const actionLabel =
+      action === 'status_change'
+        ? `Change Status to ${params.targetStatus as string}`
+        : action === 'campaign_reassign'
+        ? 'Reassign Campaign'
+        : action === 'add_tags'
+        ? 'Add Tags'
+        : action === 'remove_tags'
+        ? 'Remove Tags'
+        : 'Archive';
+
+    setPendingBulk({ action, params, actionLabel, skipped, actionableIds: selected.map((a) => a.id) });
+  }
+
+  async function handleBulkConfirm() {
+    if (!pendingBulk) return;
+    setBulkLoading(true);
+    setBulkError(null);
+
+    const { action, params, actionableIds } = pendingBulk;
+    const ids = actionableIds;
+    const body =
+      action === 'archive' ? { action: 'archive', ids } : { action, ids, ...params };
+
+    try {
+      const res = await fetch('/api/artifacts/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error ?? 'Bulk operation failed');
+      }
+
+      const data = (await res.json()) as {
+        result: {
+          succeeded: string[];
+          failed: Array<{ id: string; reason: string }>;
+          skipped: Array<{ id: string; reason: string }>;
+        };
+      };
+
+      setPendingBulk(null);
+      handleExitSelectMode();
+      await fetchArtifacts();
+
+      // Surface partial failures — handleExitSelectMode() cleared bulkError,
+      // so set after to ensure the message is visible
+      if (data.result.failed.length > 0 || data.result.skipped.length > 0) {
+        const parts: string[] = [];
+        if (data.result.succeeded.length > 0)
+          parts.push(`${data.result.succeeded.length} updated`);
+        if (data.result.skipped.length > 0)
+          parts.push(`${data.result.skipped.length} skipped`);
+        if (data.result.failed.length > 0)
+          parts.push(`${data.result.failed.length} failed`);
+        setBulkError(parts.join(', ') + '.');
+      }
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : 'Bulk operation failed');
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8 max-w-6xl mx-auto">
+      {/* Bulk action bar — sticky, appears when selection mode is active */}
+      {isSelecting && (
+        <BulkActionBar
+          selectedCount={artifacts.filter((a) => selectedIds.has(a.id)).length}
+          totalCount={artifacts.length}
+          isAllSelected={
+            artifacts.length > 0 && artifacts.every((a) => selectedIds.has(a.id))
+          }
+          campaigns={campaigns}
+          onSelectAll={handleSelectAll}
+          onDeselectAll={handleDeselectAll}
+          onExitSelectMode={handleExitSelectMode}
+          onRequestAction={handleRequestAction}
+        />
+      )}
+
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -228,9 +382,25 @@ export default function ArtifactsLibraryPage() {
             Your saved marketing deliverables.
           </p>
         </div>
-        <Button asChild>
-          <Link href="/sessions/new">Create in Session</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {artifacts.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (isSelecting) {
+                  handleExitSelectMode();
+                } else {
+                  setIsSelecting(true);
+                }
+              }}
+            >
+              {isSelecting ? 'Cancel Select' : 'Select'}
+            </Button>
+          )}
+          <Button asChild>
+            <Link href="/sessions/new">Create in Session</Link>
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -315,6 +485,20 @@ export default function ArtifactsLibraryPage() {
         </div>
       )}
 
+      {/* Bulk operation error banner */}
+      {bulkError && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          Bulk action failed: {bulkError}
+          <button
+            type="button"
+            className="ml-2 underline"
+            onClick={() => setBulkError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center min-h-[200px]">
@@ -346,56 +530,97 @@ export default function ArtifactsLibraryPage() {
             const artifactType = artifact.type as ArtifactType;
             const artifactStatus = artifact.status as ArtifactStatus;
 
+            const isSelected = selectedIds.has(artifact.id);
+
             return (
-              <Link
-                key={artifact.id}
-                href={`/artifacts/${artifact.id}`}
-                className="block"
-              >
-                <Card className="transition-colors hover:bg-muted/50 h-full">
-                  <CardContent className="p-5 flex flex-col gap-3 h-full">
-                    {/* Top row: type badge + performance signal */}
-                    <div className="flex items-center justify-between gap-2">
-                      <Badge variant="outline" className="text-xs shrink-0">
-                        {ARTIFACT_TYPE_LABELS[artifactType] ?? artifact.type}
-                      </Badge>
-                      <span
-                        className={`inline-block h-2.5 w-2.5 rounded-full shrink-0 ${SIGNAL_DOT[signal]}`}
-                        title={SIGNAL_LABEL[signal]}
-                      />
-                    </div>
+              <div key={artifact.id} className="relative">
+                {/* Checkbox overlay — only rendered in select mode */}
+                {isSelecting && (
+                  <div className="absolute top-3 left-3 z-10">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => handleToggleSelection(artifact.id)}
+                      aria-label={`Select "${artifact.title}"`}
+                    />
+                  </div>
+                )}
 
-                    {/* Title */}
-                    <p className="font-medium leading-snug line-clamp-2">
-                      {artifact.title}
-                    </p>
+                <Link
+                  href={isSelecting ? '#' : `/artifacts/${artifact.id}`}
+                  onClick={(e) => {
+                    if (isSelecting) {
+                      e.preventDefault();
+                      handleToggleSelection(artifact.id);
+                    }
+                  }}
+                  className="block"
+                >
+                  <Card
+                    className={`transition-colors hover:bg-muted/50 h-full ${
+                      isSelected ? 'ring-2 ring-primary ring-offset-1' : ''
+                    }`}
+                  >
+                    <CardContent
+                      className={`p-5 flex flex-col gap-3 h-full ${
+                        isSelecting ? 'pl-10' : ''
+                      }`}
+                    >
+                      {/* Top row: type badge + performance signal */}
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant="outline" className="text-xs shrink-0">
+                          {ARTIFACT_TYPE_LABELS[artifactType] ?? artifact.type}
+                        </Badge>
+                        <span
+                          className={`inline-block h-2.5 w-2.5 rounded-full shrink-0 ${SIGNAL_DOT[signal]}`}
+                          title={SIGNAL_LABEL[signal]}
+                        />
+                      </div>
 
-                    {/* Campaign name */}
-                    {artifact.campaign && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {artifact.campaign.name}
+                      {/* Title */}
+                      <p className="font-medium leading-snug line-clamp-2">
+                        {artifact.title}
                       </p>
-                    )}
 
-                    {/* Bottom row: status + date */}
-                    <div className="flex items-center justify-between gap-2 mt-auto pt-2">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                          STATUS_COLORS[artifactStatus] ?? ''
-                        }`}
-                      >
-                        {STATUS_LABELS[artifactStatus] ?? artifact.status}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(artifact.updatedAt)}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+                      {/* Campaign name */}
+                      {artifact.campaign && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {artifact.campaign.name}
+                        </p>
+                      )}
+
+                      {/* Bottom row: status + date */}
+                      <div className="flex items-center justify-between gap-2 mt-auto pt-2">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                            STATUS_COLORS[artifactStatus] ?? ''
+                          }`}
+                        >
+                          {STATUS_LABELS[artifactStatus] ?? artifact.status}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(artifact.updatedAt)}
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </div>
             );
           })}
         </div>
+      )}
+
+      {/* Bulk confirmation dialog */}
+      {pendingBulk && (
+        <BulkConfirmDialog
+          open
+          onClose={() => setPendingBulk(null)}
+          onConfirm={handleBulkConfirm}
+          actionLabel={pendingBulk.actionLabel}
+          totalSelected={pendingBulk.actionableIds.length}
+          skipped={pendingBulk.skipped}
+          loading={bulkLoading}
+        />
       )}
     </div>
   );

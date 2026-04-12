@@ -18,7 +18,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { REMINDER_PREFIX, ARTIFACT_STATUSES } from '@/types';
+import { getValidTransitions } from '@/lib/artifact-transitions';
 import type { ArtifactStatus, PerformanceSignal } from '@/types';
+
+export { getValidTransitions }; // re-export so existing imports from @/lib/db/artifacts still work
 
 export async function findArtifactMatchesByTitle(
   titlePartial: string,
@@ -151,18 +154,6 @@ export function getPerformanceSignal(artifact: {
   return 'logging';
 }
 
-// Valid status transitions: draft → review → approved → live → archived
-const STATUS_TRANSITIONS: Record<string, string[]> = {
-  draft: ['review'],
-  review: ['approved', 'draft'],
-  approved: ['live', 'review'],
-  live: ['archived'],
-  archived: [],
-};
-
-export function getValidTransitions(currentStatus: string): string[] {
-  return STATUS_TRANSITIONS[currentStatus] ?? [];
-}
 
 export async function transitionArtifactStatus(
   id: string,

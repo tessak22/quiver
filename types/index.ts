@@ -238,3 +238,20 @@ export const DISTRIBUTION_CHANNEL_LABELS: Record<DistributionChannel, string> = 
   youtube: 'YouTube',
   other: 'Other',
 };
+
+// ---------------------------------------------------------------------------
+// Issue #41: Bulk artifact operations
+// ---------------------------------------------------------------------------
+
+export type BulkAction =
+  | 'status_change'
+  | 'campaign_reassign'
+  | 'add_tags'
+  | 'remove_tags'
+  | 'archive';
+
+export interface BulkOperationResult {
+  succeeded: string[];
+  failed: Array<{ id: string; reason: string }>;
+  skipped: Array<{ id: string; reason: string }>;
+}
