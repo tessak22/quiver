@@ -183,11 +183,33 @@ export async function bulkCampaignReassign(
   }
 
   try {
-    await prisma.artifact.updateMany({
+    const { count } = await prisma.artifact.updateMany({
       where: { id: { in: found.map((a) => a.id) } },
       data: { campaignId },
     });
-    return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+
+    // Happy path: all rows updated — no concurrent deletions occurred.
+    if (count === found.length) {
+      return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+    }
+
+    // Mismatch: some rows were deleted between resolveArtifacts and updateMany.
+    // Re-verify to produce accurate per-ID results rather than over-reporting.
+    const verified = await prisma.artifact.findMany({
+      where: { id: { in: found.map((a) => a.id) }, campaignId },
+      select: { id: true },
+    });
+    const succeededSet = new Set(verified.map((a) => a.id));
+    return {
+      succeeded: found.filter((a) => succeededSet.has(a.id)).map((a) => a.id),
+      failed: [
+        ...failed,
+        ...found
+          .filter((a) => !succeededSet.has(a.id))
+          .map((a) => ({ id: a.id, reason: 'Not updated (concurrent modification)' })),
+      ],
+      skipped: [],
+    };
   } catch {
     return {
       succeeded: [],
