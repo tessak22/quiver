@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { safeErrorMessage } from '@/lib/utils';
 import { getResearchQuotes } from '@/lib/db/research';
 
 export async function GET(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('viewer');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const url = new URL(request.url);
@@ -24,7 +21,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ quotes });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch quotes';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch quotes') },
+      { status: 500 }
+    );
   }
 }

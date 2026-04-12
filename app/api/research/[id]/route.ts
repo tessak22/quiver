@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import {
   getResearchEntry,
   updateResearchEntry,
@@ -10,12 +11,8 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('viewer');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const entry = await getResearchEntry(params.id);
@@ -26,8 +23,10 @@ export async function GET(
 
     return NextResponse.json({ entry });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch research entry';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch research entry') },
+      { status: 500 }
+    );
   }
 }
 
@@ -35,12 +34,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const existing = await getResearchEntry(params.id);
@@ -48,12 +43,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Research entry not found' }, { status: 404 });
     }
 
-    let body: Record<string, unknown>;
-    try {
-      body = await request.json() as Record<string, unknown>;
-    } catch {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-    }
+    const { data: body, error } = await parseJsonBody(request);
+    if (error) return error;
 
     // Only allow metadata updates, NOT rawNotes
     const updateData: {
@@ -83,15 +74,15 @@ export async function PATCH(
     if (typeof body.contactStage === 'string') {
       updateData.contactStage = body.contactStage;
     }
-    if (typeof body.researchDate === 'string') {
-      const d = new Date(body.researchDate);
-      if (isNaN(d.getTime())) {
+    if (body.researchDate !== undefined) {
+      const parsed = parseISODate(body.researchDate);
+      if (!parsed) {
         return NextResponse.json(
           { error: 'Invalid researchDate format. Use ISO 8601 (e.g. 2026-04-11).' },
           { status: 400 }
         );
       }
-      updateData.researchDate = d;
+      updateData.researchDate = parsed;
     }
     if (typeof body.productSignal === 'boolean') {
       updateData.productSignal = body.productSignal;
@@ -111,8 +102,10 @@ export async function PATCH(
 
     return NextResponse.json({ entry });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update research entry';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to update research entry') },
+      { status: 500 }
+    );
   }
 }
 
@@ -120,12 +113,8 @@ export async function DELETE(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const existing = await getResearchEntry(params.id);
@@ -137,7 +126,9 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to delete research entry';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to delete research entry') },
+      { status: 500 }
+    );
   }
 }

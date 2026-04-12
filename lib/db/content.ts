@@ -18,7 +18,6 @@
  *   - getContentPerformanceSignal returns 'no_data' for empty snapshots,
  *     'logging' for fewer than 3, 'strong' when latest pageviews >= average,
  *     'weak' when latest pageviews < 50% of average.
- *   - publishContentPiece only sets publishedAt if it was previously null.
  */
 
 import { prisma } from '@/lib/db';
@@ -39,25 +38,30 @@ export async function generateSlug(title: string): Promise<string> {
     base = 'untitled';
   }
 
-  // Check if base slug is available
-  const existing = await prisma.contentPiece.findUnique({
-    where: { slug: base },
-    select: { id: true },
+  // Fetch all existing slugs matching the base pattern in one query
+  const existing = await prisma.contentPiece.findMany({
+    where: { slug: { startsWith: base } },
+    select: { slug: true },
   });
+  const existingSlugs = new Set(existing.map((e) => e.slug));
 
-  if (!existing) return base;
+  // If the base slug is available, use it directly
+  if (!existingSlugs.has(base)) return base;
 
-  // Append incrementing suffix until we find an available slug
-  let suffix = 2;
-  while (true) {
+  // Find the next available suffix in memory
+  const MAX_SUFFIX = 100;
+  for (let suffix = 2; suffix <= MAX_SUFFIX + 1; suffix++) {
+    if (suffix > MAX_SUFFIX) {
+      throw new Error(
+        `Could not generate a unique slug for "${title}" after ${MAX_SUFFIX} attempts.`
+      );
+    }
     const candidate = `${base}-${suffix}`;
-    const taken = await prisma.contentPiece.findUnique({
-      where: { slug: candidate },
-      select: { id: true },
-    });
-    if (!taken) return candidate;
-    suffix++;
+    if (!existingSlugs.has(candidate)) return candidate;
   }
+
+  // Unreachable, but satisfies TypeScript
+  throw new Error(`Could not generate a unique slug for "${title}".`);
 }
 
 // -------------------------------------------------------------------------
@@ -246,24 +250,6 @@ export async function updateContentPiece(
       parentContent: {
         select: { id: true, title: true, contentType: true, slug: true },
       },
-    },
-  });
-}
-
-export async function publishContentPiece(id: string) {
-  const existing = await prisma.contentPiece.findUnique({
-    where: { id },
-    select: { publishedAt: true },
-  });
-
-  return prisma.contentPiece.update({
-    where: { id },
-    data: {
-      status: 'published',
-      publishedAt: existing?.publishedAt ?? new Date(),
-    },
-    include: {
-      campaign: { select: { id: true, name: true } },
     },
   });
 }

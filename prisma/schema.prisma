@@ -9,54 +9,57 @@ datasource db {
 }
 
 model ContextVersion {
-  id                    String   @id @default(uuid())
-  version               Int
-  isActive              Boolean  @default(false)
-  positioningStatement  String?
-  icpDefinition         Json?
-  messagingPillars      Json?
-  competitiveLandscape  Json?
-  customerLanguage      Json?
-  proofPoints           Json?
-  activeHypotheses      Json?
-  brandVoice            String?
-  wordsToUse            String[]
-  wordsToAvoid          String[]
-  updatedBy             String?
-  updateSource          String?
-  changeSummary         String?
-  createdAt             DateTime @default(now())
+  id                   String   @id @default(uuid())
+  version              Int
+  isActive             Boolean  @default(false)
+  positioningStatement String?
+  icpDefinition        Json?
+  messagingPillars     Json?
+  competitiveLandscape Json?
+  customerLanguage     Json?
+  proofPoints          Json?
+  activeHypotheses     Json?
+  brandVoice           String?
+  wordsToUse           String[]
+  wordsToAvoid         String[]
+  updatedBy            String?
+  updateSource         String?
+  changeSummary        String?
+  createdAt            DateTime @default(now())
 
-  sessions     Session[]
-  artifacts    Artifact[]
-  campaigns    Campaign[]
+  sessions      Session[]
+  artifacts     Artifact[]
+  campaigns     Campaign[]
+  contentPieces ContentPiece[]
 
+  @@index([isActive])
   @@map("context_versions")
 }
 
 model Campaign {
-  id                  String   @id @default(uuid())
-  name                String
-  description         String?
-  goal                String?
-  channels            String[]
-  status              String   @default("planning")
-  priority            String   @default("medium")
-  startDate           DateTime?
-  endDate             DateTime?
-  ownerId             String?
-  contextVersionId    String?
-  links               Json?    // [{label: string, url: string}]
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id               String    @id @default(uuid())
+  name             String
+  description      String?
+  goal             String?
+  channels         String[]
+  status           String    @default("planning")
+  priority         String    @default("medium")
+  startDate        DateTime?
+  endDate          DateTime?
+  ownerId          String?
+  contextVersionId String?
+  links            Json? // [{label: string, url: string}]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  contextVersion  ContextVersion? @relation(fields: [contextVersionId], references: [id])
+  contextVersion  ContextVersion?  @relation(fields: [contextVersionId], references: [id])
   sessions        Session[]
   artifacts       Artifact[]
   performanceLogs PerformanceLog[]
   researchEntries ResearchEntry[]
   contentPieces   ContentPiece[]
 
+  @@index([status])
   @@map("campaigns")
 }
 
@@ -97,33 +100,37 @@ model Artifact {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  campaign        Campaign        @relation(fields: [campaignId], references: [id])
-  session         Session?        @relation(fields: [sessionId], references: [id])
-  contextVersion  ContextVersion? @relation(fields: [contextVersionId], references: [id])
+  campaign        Campaign         @relation(fields: [campaignId], references: [id])
+  session         Session?         @relation(fields: [sessionId], references: [id])
+  contextVersion  ContextVersion?  @relation(fields: [contextVersionId], references: [id])
+  parentArtifact  Artifact?        @relation("ArtifactVersions", fields: [parentArtifactId], references: [id])
+  childArtifacts  Artifact[]       @relation("ArtifactVersions")
   performanceLogs PerformanceLog[]
+  contentPieces   ContentPiece[]
 
   @@map("artifacts")
 }
 
 model PerformanceLog {
-  id                    String   @id @default(uuid())
-  artifactId            String?
-  campaignId            String
-  logType               String
-  metrics               Json?
-  qualitativeNotes      String?
+  id                     String    @id @default(uuid())
+  artifactId             String?
+  campaignId             String
+  logType                String
+  metrics                Json?
+  qualitativeNotes       String?
   whatWorked             String?
   whatDidnt              String?
   proposedContextUpdates Json?
-  contextUpdateStatus   String   @default("na")
-  recordedBy            String
-  recordedAt            DateTime @default(now())
-  periodStart           DateTime?
-  periodEnd             DateTime?
+  contextUpdateStatus    String    @default("na")
+  recordedBy             String
+  recordedAt             DateTime  @default(now())
+  periodStart            DateTime?
+  periodEnd              DateTime?
 
-  artifact  Artifact? @relation(fields: [artifactId], references: [id])
-  campaign  Campaign  @relation(fields: [campaignId], references: [id])
+  artifact Artifact? @relation(fields: [artifactId], references: [id])
+  campaign Campaign  @relation(fields: [campaignId], references: [id])
 
+  @@index([contextUpdateStatus])
   @@map("performance_logs")
 }
 
@@ -142,26 +149,26 @@ model TeamMember {
 model ResearchEntry {
   id                String    @id @default(uuid())
   title             String
-  sourceType        String    // call | interview | survey | review | forum | support_ticket | social | common_room | other
+  sourceType        String // call | interview | survey | review | forum | support_ticket | social | common_room | other
   contactName       String?
   contactCompany    String?
   contactSegment    String?
-  contactStage      String?   // prospect | customer | churned | never_converted
+  contactStage      String? // prospect | customer | churned | never_converted
   researchDate      DateTime?
   rawNotes          String
   summary           String?
   themes            String[]
-  sentiment         String?   // positive | negative | neutral | mixed
+  sentiment         String? // positive | negative | neutral | mixed
   productSignal     Boolean   @default(false)
   productNote       String?
-  hypothesisSignals Json?     // stored after AI processing
+  hypothesisSignals Json? // stored after AI processing
   campaignId        String?
   createdBy         String
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  campaign  Campaign?       @relation(fields: [campaignId], references: [id])
-  quotes    ResearchQuote[]
+  campaign Campaign?       @relation(fields: [campaignId], references: [id])
+  quotes   ResearchQuote[]
 
   @@map("research_entries")
 }
@@ -187,8 +194,8 @@ model ContentPiece {
   id                String    @id @default(uuid())
   title             String
   slug              String    @unique
-  contentType       String    // blog_post | case_study | landing_page | changelog | newsletter | social_thread | video_script | doc | other
-  status            String    @default("draft")  // draft | review | approved | published | archived
+  contentType       String // blog_post | case_study | landing_page | changelog | newsletter | social_thread | video_script | doc | other
+  status            String    @default("draft") // draft | review | approved | published | archived
   body              String
   excerpt           String?
   metaTitle         String?
@@ -209,22 +216,25 @@ model ContentPiece {
   contextVersionId  String?
   createdBy         String
 
-  campaign        Campaign?        @relation(fields: [campaignId], references: [id])
-  parentContent   ContentPiece?    @relation("ContentRepurpose", fields: [parentContentId], references: [id])
-  derivedContent  ContentPiece[]   @relation("ContentRepurpose")
+  campaign        Campaign?               @relation(fields: [campaignId], references: [id])
+  parentContent   ContentPiece?           @relation("ContentRepurpose", fields: [parentContentId], references: [id])
+  derivedContent  ContentPiece[]          @relation("ContentRepurpose")
+  artifact        Artifact?               @relation(fields: [artifactId], references: [id])
+  contextVersion  ContextVersion?         @relation(fields: [contextVersionId], references: [id])
   distributions   ContentDistribution[]
   metricSnapshots ContentMetricSnapshot[]
 
+  @@index([status])
   @@map("content_pieces")
 }
 
 model ContentDistribution {
   id             String    @id @default(uuid())
   contentPieceId String
-  channel        String    // website | dev_to | hashnode | medium | newsletter | linkedin | twitter | youtube | other
+  channel        String // website | dev_to | hashnode | medium | newsletter | linkedin | twitter | youtube | other
   url            String?
   publishedAt    DateTime?
-  status         String    @default("planned")  // planned | published | archived
+  status         String    @default("planned") // planned | published | archived
   notes          String?
   createdAt      DateTime  @default(now())
 
@@ -239,7 +249,7 @@ model ContentMetricSnapshot {
   snapshotDate   DateTime
   pageviews      Int?
   uniqueVisitors Int?
-  avgTimeOnPage  Int?     // seconds
+  avgTimeOnPage  Int? // seconds
   bounceRate     Float?
   organicClicks  Int?
   impressions    Int?
@@ -250,7 +260,7 @@ model ContentMetricSnapshot {
   comments       Int?
   signups        Int?
   conversionRate Float?
-  source         String   @default("manual")  // manual | mcp_pull | scheduled_sync
+  source         String   @default("manual") // manual | mcp_pull | scheduled_sync
   notes          String?
   recordedBy     String
   createdAt      DateTime @default(now())

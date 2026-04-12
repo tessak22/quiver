@@ -3,7 +3,12 @@ import { NextResponse } from 'next/server';
 
 export async function POST() {
   const supabase = createClient();
-  await supabase.auth.signOut();
+
+  try {
+    await supabase.auth.signOut();
+  } catch (err) {
+    console.error('[auth/logout] Sign out failed:', err);
+  }
 
   // Clear membership cache and onboarding cookies
   const response = NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'));

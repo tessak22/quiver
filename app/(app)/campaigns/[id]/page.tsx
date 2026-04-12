@@ -307,28 +307,30 @@ function ArtifactsTab({ campaignId }: { campaignId: string }) {
       {artifacts.map((artifact) => {
         const artifactStatus = artifact.status as ArtifactStatus;
         return (
-          <Card key={artifact.id} className="transition-colors hover:bg-muted/50">
-            <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="outline" className="text-xs">
-                    {artifact.type.replace(/_/g, ' ')}
-                  </Badge>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      ARTIFACT_STATUS_COLORS[artifactStatus] ?? ''
-                    }`}
-                  >
-                    {artifactStatus}
-                  </span>
+          <Link key={artifact.id} href={`/artifacts/${artifact.id}`} className="block">
+            <Card className="transition-colors hover:bg-muted/50">
+              <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-xs">
+                      {artifact.type.replace(/_/g, ' ')}
+                    </Badge>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        ARTIFACT_STATUS_COLORS[artifactStatus] ?? ''
+                      }`}
+                    >
+                      {artifactStatus}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm font-medium truncate">{artifact.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Created {formatDateTime(artifact.createdAt)}
+                  </p>
                 </div>
-                <p className="mt-1 text-sm font-medium truncate">{artifact.title}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Created {formatDateTime(artifact.createdAt)}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
         );
       })}
     </div>
@@ -569,6 +571,8 @@ export default function CampaignDetailPage() {
 
   // Archive handler
   async function handleArchive() {
+    if (!confirm('Are you sure you want to archive this campaign? This cannot be undone.')) return;
+
     try {
       const res = await fetch(`/api/campaigns/${campaignId}`, {
         method: 'DELETE',

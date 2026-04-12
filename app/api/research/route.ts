@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import {
   createResearchEntry,
   getResearchEntries,
@@ -8,12 +9,8 @@ import {
 import { processResearchEntry } from '@/lib/ai/research';
 
 export async function GET(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('viewer');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const url = new URL(request.url);
   const sourceType = url.searchParams.get('sourceType');
@@ -35,25 +32,19 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ entries });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch research entries';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch research entries') },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json() as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+  const { data: body, error } = await parseJsonBody(request);
+  if (error) return error;
 
   if (!body.title || typeof body.title !== 'string') {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 });
@@ -67,15 +58,15 @@ export async function POST(request: Request) {
 
   // Validate date if provided
   let researchDate: Date | undefined;
-  if (typeof body.researchDate === 'string') {
-    const d = new Date(body.researchDate);
-    if (isNaN(d.getTime())) {
+  if (body.researchDate !== undefined) {
+    const parsed = parseISODate(body.researchDate);
+    if (!parsed) {
       return NextResponse.json(
         { error: 'Invalid researchDate format. Use ISO 8601 (e.g. 2026-04-11).' },
         { status: 400 }
       );
     }
-    researchDate = d;
+    researchDate = parsed;
   }
 
   try {
@@ -91,7 +82,7 @@ export async function POST(request: Request) {
     productSignal: typeof body.productSignal === 'boolean' ? body.productSignal : false,
     productNote: typeof body.productNote === 'string' ? body.productNote : undefined,
     campaignId: typeof body.campaignId === 'string' ? body.campaignId : undefined,
-    createdBy: user.id,
+    createdBy: auth.id,
   });
 
   // Run AI processing after response is sent — waitUntil keeps the
@@ -109,9 +100,11 @@ export async function POST(request: Request) {
     campaignId: entry.campaignId,
   }));
 
-  return NextResponse.json({ entry, processing: true });
+  return NextResponse.json({ entry, processing: true }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to create research entry';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to create research entry') },
+      { status: 500 }
+    );
   }
 }

@@ -99,6 +99,16 @@ export function registerContextTools(server: McpServer) {
     },
     async ({ proposals, source_note }) => {
       try {
+        // Validate that every proposal field is a known context field
+        const invalidFields = proposals
+          .map((p) => p.field)
+          .filter((f) => !CONTEXT_FIELDS.has(f as never));
+        if (invalidFields.length > 0) {
+          return error(
+            `Invalid context field(s): ${invalidFields.join(', ')}. Valid fields: ${[...CONTEXT_FIELDS].join(', ')}`
+          );
+        }
+
         const defaultCampaign = await getDefaultCampaign();
         if (!defaultCampaign) {
           return error(

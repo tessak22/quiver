@@ -136,13 +136,14 @@ export async function middleware(request: NextRequest) {
   // Side effects — only on pass-through (cookies for caching)
   // ---------------------------------------------------------------------------
 
-  // Cache membership for 5 minutes to avoid DB query on every request
+  // Cache membership for 60 seconds to avoid DB query on every request
   if (user && isMember && !membershipCached) {
     supabaseResponse.cookies.set('quiver_member', user.id, {
       path: '/',
-      maxAge: 60 * 5,
+      maxAge: 60,
       httpOnly: true,
       sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
     });
   }
 
@@ -151,9 +152,10 @@ export async function middleware(request: NextRequest) {
   if (user && !onboardingComplete && activeContextExists) {
     supabaseResponse.cookies.set('quiver_onboarded', 'true', {
       path: '/',
-      maxAge: 60 * 60 * 24 * 365, // 1 year
+      maxAge: 86400, // 24 hours
       httpOnly: true,
       sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
     });
   }
 

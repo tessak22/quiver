@@ -1,24 +1,23 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
+import { aiRateLimiter } from '@/lib/rate-limit';
 import { sendMessage } from '@/lib/ai/client';
 import { getActiveContext } from '@/lib/db/context';
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!aiRateLimiter.check(auth.id)) {
+    return NextResponse.json({ error: 'Too many AI requests. Please wait.' }, { status: 429 });
   }
 
-  let body: { goal?: string; description?: string };
-  try {
-    body = await request.json() as typeof body;
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+  const { data: body, error } = await parseJsonBody(request);
+  if (error) return error;
 
-  const { goal, description } = body;
+  const goal = body.goal as string | undefined;
+  const description = body.description as string | undefined;
 
   if (!goal || typeof goal !== 'string' || !goal.trim()) {
     return NextResponse.json(
@@ -27,32 +26,33 @@ export async function POST(request: Request) {
     );
   }
 
-  // Load active context for ICP and positioning
-  const context = await getActiveContext();
+  try {
+    // Load active context for ICP and positioning
+    const context = await getActiveContext();
 
-  let contextInfo = '';
-  if (context) {
-    const parts: string[] = [];
-    if (context.positioningStatement) {
-      parts.push(`Positioning: ${context.positioningStatement}`);
+    let contextInfo = '';
+    if (context) {
+      const parts: string[] = [];
+      if (context.positioningStatement) {
+        parts.push(`Positioning: ${context.positioningStatement}`);
+      }
+      if (context.icpDefinition) {
+        parts.push(
+          `ICP: ${typeof context.icpDefinition === 'string' ? context.icpDefinition : JSON.stringify(context.icpDefinition)}`
+        );
+      }
+      if (context.messagingPillars) {
+        parts.push(
+          `Messaging Pillars: ${typeof context.messagingPillars === 'string' ? context.messagingPillars : JSON.stringify(context.messagingPillars)}`
+        );
+      }
+      if (parts.length > 0) {
+        contextInfo = `\n\nProduct Marketing Context:\n${parts.join('\n')}`;
+      }
     }
-    if (context.icpDefinition) {
-      parts.push(
-        `ICP: ${typeof context.icpDefinition === 'string' ? context.icpDefinition : JSON.stringify(context.icpDefinition)}`
-      );
-    }
-    if (context.messagingPillars) {
-      parts.push(
-        `Messaging Pillars: ${typeof context.messagingPillars === 'string' ? context.messagingPillars : JSON.stringify(context.messagingPillars)}`
-      );
-    }
-    if (parts.length > 0) {
-      contextInfo = `\n\nProduct Marketing Context:\n${parts.join('\n')}`;
-    }
-  }
 
-  const result = await sendMessage({
-    system: `You are a marketing strategist helping plan a campaign. Based on the campaign goal, description, and any available product marketing context, suggest channels, success metrics, and brief strategic notes.
+    const result = await sendMessage({
+      system: `You are a marketing strategist helping plan a campaign. Based on the campaign goal, description, and any available product marketing context, suggest channels, success metrics, and brief strategic notes.
 
 Respond with ONLY valid JSON in this exact format — no markdown, no code fences:
 {"channels": ["channel1", "channel2"], "metrics": ["metric1", "metric2"], "notes": "Brief strategic notes about the campaign approach."}
@@ -62,38 +62,44 @@ Guidelines:
 - Suggest 3-5 measurable success metrics
 - Keep the strategic notes to 2-3 sentences
 - Channel names should be short labels (e.g. "Email", "LinkedIn", "Google Ads", "Blog", "Webinars")`,
-    messages: [
-      {
-        role: 'user',
-        content: `Campaign Goal: ${goal.trim()}${description ? `\nDescription: ${description.trim()}` : ''}${contextInfo}`,
-      },
-    ],
-    maxTokens: 1024,
-  });
+      messages: [
+        {
+          role: 'user',
+          content: `Campaign Goal: ${goal.trim()}${description ? `\nDescription: ${description.trim()}` : ''}${contextInfo}`,
+        },
+      ],
+      maxTokens: 1024,
+    });
 
-  if (result.error) {
+    if (result.error) {
+      return NextResponse.json(
+        { error: result.error.message },
+        { status: 500 }
+      );
+    }
+
+    try {
+      const parsed = JSON.parse(result.content) as {
+        channels: string[];
+        metrics: string[];
+        notes: string;
+      };
+      return NextResponse.json({
+        channels: Array.isArray(parsed.channels) ? parsed.channels : [],
+        metrics: Array.isArray(parsed.metrics) ? parsed.metrics : [],
+        notes: typeof parsed.notes === 'string' ? parsed.notes : '',
+      });
+    } catch {
+      return NextResponse.json({
+        channels: [],
+        metrics: [],
+        notes: result.content,
+      });
+    }
+  } catch (err) {
     return NextResponse.json(
-      { error: result.error.message },
+      { error: safeErrorMessage(err, 'Failed to generate AI brief') },
       { status: 500 }
     );
-  }
-
-  try {
-    const parsed = JSON.parse(result.content) as {
-      channels: string[];
-      metrics: string[];
-      notes: string;
-    };
-    return NextResponse.json({
-      channels: Array.isArray(parsed.channels) ? parsed.channels : [],
-      metrics: Array.isArray(parsed.metrics) ? parsed.metrics : [],
-      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
-    });
-  } catch {
-    return NextResponse.json({
-      channels: [],
-      metrics: [],
-      notes: result.content,
-    });
   }
 }

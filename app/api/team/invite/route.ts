@@ -1,40 +1,22 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { getTeamMember } from '@/lib/db/team';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody } from '@/lib/utils';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { TEAM_ROLES } from '@/types';
+import { TEAM_ROLES, type TeamRole } from '@/types';
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('admin');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  // Check if requester is admin
-  const requester = await getTeamMember(user.id);
-
-  if (!requester || requester.role !== 'admin') {
-    return NextResponse.json(
-      { error: 'Only admins can invite team members' },
-      { status: 403 }
-    );
-  }
-
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
-  const { email, role = 'member' } = body;
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const { email, role = 'member' } = parsed.data;
 
   if (!email || typeof email !== 'string') {
     return NextResponse.json({ error: 'Email is required' }, { status: 400 });
   }
 
-  if (!TEAM_ROLES.includes(role)) {
+  if (!TEAM_ROLES.includes(role as TeamRole)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
   }
 
