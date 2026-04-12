@@ -1,80 +1,207 @@
 # Quiver
 
-An open-source, self-hosted, AI-powered marketing command center for product teams. Every AI session starts grounded in your product's actual positioning, ICP, competitive landscape, and past performance. The system compounds: every result logged makes the next session smarter.
+Quiver is an open-source, self-hosted, AI-powered marketing command center for product teams. Every session starts with your actual positioning, ICP, messaging, and past results, so outputs improve as your team logs more work.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
+## Feature Overview
+
+Quiver includes:
+
+- **Marketing context system** with version history and proposal review workflow
+- **Five AI session modes** (Strategy, Create, Feedback, Analyze, Optimize) with skill loading
+- **Artifact library** with versioning, status workflow, and campaign linking
+- **Campaign workspace** tying sessions, artifacts, content, research, and performance together
+- **Performance log** with close-the-loop queue and context update proposals
+- **Content layer** with markdown body, SEO/OG metadata, distribution tracking, and metric snapshots
+- **Customer research layer** with async AI processing, quote extraction, and VoC quote library
+- **MCP server access** over stdio (`mcp/`) and HTTP (`/api/mcp`) for external AI clients
+- **Public Content API** for website pulls from Quiver as source of truth
+- **Light/dark mode** with persisted user preference
+
+---
+
 ## Self-Hosting (30 minutes)
 
 1. **Fork** this repo
-2. **Create a [Supabase](https://supabase.com) project** — free tier works
+2. **Create a [Supabase](https://supabase.com) project**
 3. **Get an [Anthropic API key](https://console.anthropic.com/settings/keys)**
-4. **Deploy to Vercel** using the button above — paste your env vars when prompted
-5. **Run the Prisma migration** against your Supabase database:
+4. **Deploy to Vercel** with the button above
+5. **Run Prisma migration** against your database:
    ```bash
    npx prisma migrate deploy
    ```
-6. **Visit your deployment URL** — the onboarding wizard launches automatically on first run
-7. **Complete onboarding**, invite your team, and start working
+6. **Visit your deployment URL** and complete onboarding
 
 ---
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in every value. Here is where to find each one:
+Copy `.env.example` to `.env.local` and fill in values:
 
-| Variable | Where to get it |
-|---|---|
-| `DATABASE_URL` | Supabase: Settings > Database > Connection string > URI (use **connection pooler**) |
-| `DIRECT_URL` | Supabase: Settings > Database > Connection string > URI (use **direct connection**) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase: Settings > API > Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase: Settings > API > Project API keys > `anon / public` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase: Settings > API > Project API keys > `service_role` (server-side only, never expose to client) |
-| `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com/settings/keys) |
-| `NEXT_PUBLIC_APP_URL` | Your deployment URL (e.g. `https://quiver.yourteam.com`) or `http://localhost:3000` for local dev |
-| `QUIVER_SHARE_SECRET` | Secret for generating session share links. Generate with: `openssl rand -base64 32`. Without this, sharing returns an error. |
+| Variable | Required | Notes |
+|---|---|---|
+| `DATABASE_URL` | Yes | Postgres connection string (pooled) |
+| `DIRECT_URL` | Yes | Direct DB connection for Prisma migrations |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-only Supabase service role key |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API key |
+| `NEXT_PUBLIC_APP_URL` | Yes | App URL (`https://...` or `http://localhost:3000`) |
+| `QUIVER_SHARE_SECRET` | Yes | Secret for session share links (`openssl rand -base64 32`) |
+| `MCP_AUTH_SECRET` | No | Optional Bearer auth for `/api/mcp` |
+| `TABSTACK_API_KEY` | No | Reserved for Issue #50 content import (not implemented in this checkout) |
+
+---
+
+## Content API
+
+Published content is available from Quiver via a public, unauthenticated API:
+
+```txt
+GET /api/public/content/[slug]   # single published piece with markdown body + SEO/OG
+GET /api/public/content          # paginated list of published pieces
+```
+
+Query params for list endpoint:
+
+- `contentType` (optional)
+- `limit` (default `20`, max `50`)
+- `offset` (default `0`)
+
+Both endpoints are rate-limited to `60` requests/minute per IP (in-memory limiter per app instance).
+
+Use this API at build time or runtime in your website. Quiver stays the source of truth.
+
+---
+
+## MCP Server
+
+Quiver ships with an MCP server that exposes the full product surface as tools for Claude Desktop, Cursor, Windsurf, and other MCP-compatible clients.
+
+### Why this matters
+
+A better-informed Claude instance (project memory + connected services + Quiver MCP tools) can log performance, save research, update context, and manage content directly, while Quiver remains the storage and tracking system.
+
+### Build (stdio server)
+
+```bash
+cd mcp
+npm install
+npx prisma generate
+npm run build
+```
+
+### Claude Desktop config (stdio)
+
+```json
+{
+  "mcpServers": {
+    "quiver": {
+      "command": "node",
+      "args": ["/absolute/path/to/quiver/mcp/dist/index.js"],
+      "env": {
+        "DATABASE_URL": "your-supabase-connection-string"
+      }
+    }
+  }
+}
+```
+
+> **Note:** `ANTHROPIC_API_KEY` is optional for the stdio server. The only tool that uses it is `log_performance` — it runs AI synthesis after logging results to propose context updates. Without the key, `log_performance` still works but skips synthesis.
+
+### Cursor config (stdio)
+
+```json
+{
+  "mcpServers": {
+    "quiver": {
+      "command": "node",
+      "args": ["/absolute/path/to/quiver/mcp/dist/index.js"],
+      "env": {
+        "DATABASE_URL": "your-supabase-connection-string"
+      }
+    }
+  }
+}
+```
+
+### Remote HTTP connector (`/api/mcp`)
+
+Quiver also includes a Streamable HTTP MCP endpoint in the Next.js app:
+
+```txt
+https://<your-domain>/api/mcp
+```
+
+- Set `MCP_AUTH_SECRET` to require `Authorization: Bearer <secret>`
+- Without `MCP_AUTH_SECRET`, endpoint allows requests (safe only for private/internal deployments)
+
+### Tool domains
+
+Context:
+- `get_context`, `get_context_history`, `propose_context_update`, `apply_context_update`, `restore_context_version`
+
+Campaigns:
+- `list_campaigns`, `get_campaign`, `create_campaign`, `update_campaign`, `update_campaign_status`
+
+Artifacts:
+- `list_artifacts`, `get_artifact`, `save_artifact`, `update_artifact`, `update_artifact_status`
+
+Performance:
+- `log_performance`, `get_performance_log`, `get_close_the_loop_queue`, `list_proposals`, `action_proposal`
+
+Content:
+- `list_content`, `get_content`, `save_content`, `update_content`, `add_distribution`, `log_content_metrics`, `get_content_metrics`, `get_content_calendar`
+
+Research:
+- `list_research_entries`, `get_research_entry`, `save_research_entry`, `list_quotes`, `get_linear_payload`
+
+Sessions:
+- `list_sessions`, `get_session`
+
+Workspace:
+- `get_dashboard_summary`
+
+### `propose_context_update` vs `apply_context_update`
+
+- **`propose_context_update`**: creates a pending proposal for human review
+- **`apply_context_update`**: applies changes immediately and creates a new context version
+
+Use `apply_context_update` only when the user explicitly asks for immediate change.
 
 ---
 
 ## Skills System
 
-Quiver's intelligence layer comes from [coreyhaines31/marketingskills](https://github.com/coreyhaines31/marketingskills) — a collection of markdown skill files that define frameworks for every marketing task.
+Quiver loads static markdown skills from `/skills` (pinned from `coreyhaines31/marketingskills`).
 
-**How skills are stored:** The `/skills` directory contains a pinned copy of the marketingskills repo. The exact commit is recorded in `/skills/PINNED_VERSION`.
+- Skills are loaded at session start from disk
+- Feedback mode uses `customer-research`
+- Create mode skill selection depends on artifact type
+- Admins can update to newer pinned skill versions from Settings
 
-**How skills are loaded:** When an AI session starts, `lib/ai/skills.ts` reads the relevant skill files based on session mode and injects them into the system prompt. Skills are static files shipped with the app — they are not fetched at runtime.
-
-**How to update skills:** An admin can update skills from the Settings page, which pulls the latest commit from the marketingskills repo and updates `PINNED_VERSION`.
-
-**Skill-to-mode mapping:**
-
-| Session Mode | Skills Loaded |
-|---|---|
-| Strategy | product-marketing-context, marketing-psychology, marketing-ideas, launch-strategy, competitor-alternatives |
-| Create | Determined by artifact type (e.g. `email_sequence` loads email-sequence, `landing_page` loads copywriting + page-cro) |
-| Feedback | customer-research |
-| Analyze | analytics-tracking, ab-test-setup |
-| Optimize | page-cro, copy-editing, ab-test-setup, signup-flow-cro, onboarding-cro |
-
-See `lib/ai/skills.ts` for the complete artifact type mapping.
+See `lib/ai/skills.ts` for exact mapping.
 
 ---
 
 ## System Prompt Assembly
 
-Every AI session assembles a system prompt from six sections, in order:
+Each session prompt is assembled from:
 
-1. **Role definition** — expert B2B marketing strategist grounded in this team's context
-2. **Product context** — the active `context_version` row (positioning, ICP, messaging, competitive landscape, brand voice, etc.)
-3. **Skill frameworks** — markdown skill files loaded based on session mode
-4. **Performance history** — recent artifacts of the same type with logged results (create mode only)
-5. **Mode instructions** — mode-specific output format and behavior
-6. **Output instructions** — artifact-ready marker format for the save UI
+1. Role definition
+2. Active product context
+3. Loaded skill content
+4. Performance history (create mode)
+5. Featured customer quotes (create + strategy)
+6. Published content context (create + strategy)
+7. Mode instructions
+8. Output instructions
 
-Full implementation: [`lib/ai/session.ts`](lib/ai/session.ts)
+See `lib/ai/session.ts`.
 
 ---
 
@@ -89,203 +216,31 @@ Full implementation: [`lib/ai/session.ts`](lib/ai/session.ts)
 | Database | Supabase (Postgres) |
 | ORM | Prisma |
 | Auth | Supabase Auth |
-| AI | Anthropic SDK — claude-sonnet-4-20250514 |
+| AI | Anthropic SDK |
 | Testing | Vitest |
 | Deployment | Vercel |
 
 ---
 
-## MCP Server
-
-Quiver ships with a built-in [Model Context Protocol](https://modelcontextprotocol.io) server that exposes all functionality as tools. This lets you use a more capable Claude model (Claude Desktop, Cursor, Windsurf, or claude.ai with MCP connectors) to interact with your Quiver data directly — log performance, create campaigns, save artifacts, update context — without switching to the browser.
-
-Each team that deploys Quiver runs their own MCP server pointed at their own database.
-
-### Build
-
-```bash
-cd mcp
-npm install
-npx prisma generate
-npm run build
-```
-
-### Claude Desktop
-
-Add this to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-```json
-{
-  "mcpServers": {
-    "quiver": {
-      "command": "node",
-      "args": ["/absolute/path/to/quiver/mcp/dist/index.js"],
-      "env": {
-        "DATABASE_URL": "your-supabase-connection-string",
-        "ANTHROPIC_API_KEY": "your-anthropic-api-key"
-      }
-    }
-  }
-}
-```
-
-### Cursor
-
-Add this to your Cursor MCP settings (`.cursor/mcp.json` in your project, or global settings):
-
-```json
-{
-  "mcpServers": {
-    "quiver": {
-      "command": "node",
-      "args": ["/absolute/path/to/quiver/mcp/dist/index.js"],
-      "env": {
-        "DATABASE_URL": "your-supabase-connection-string",
-        "ANTHROPIC_API_KEY": "your-anthropic-api-key"
-      }
-    }
-  }
-}
-```
-
-### claude.ai Custom Connectors (remote HTTP)
-
-Quiver ships a production-ready remote MCP endpoint at `/api/mcp` using the
-[MCP Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports).
-No extra build step is needed — the endpoint is part of the Next.js app and is
-deployed automatically to Vercel alongside the rest of Quiver.
-
-#### Prerequisites
-
-| Requirement | Notes |
-|---|---|
-| Vercel deployment | The endpoint is at `https://<your-domain>/api/mcp` |
-| `DATABASE_URL` set in Vercel env vars | Same variable the Next.js app uses |
-| `ANTHROPIC_API_KEY` set in Vercel env vars | Required for AI synthesis tools |
-| `MCP_AUTH_SECRET` set in Vercel env vars | **Optional** — omit for private/internal deployments; required for public internet exposure |
-
-#### Setting up auth (recommended for public deployments)
-
-1. Generate a secure random string: `openssl rand -hex 32`
-2. Add it as `MCP_AUTH_SECRET` in your Vercel project settings → Environment Variables
-3. Redeploy (or trigger a new build) so the variable takes effect
-
-Without `MCP_AUTH_SECRET` set, the endpoint accepts all requests — only do
-this on private/VPC-restricted deployments.
-
-#### Adding the connector in Claude browser
-
-1. Open Claude at [claude.ai](https://claude.ai) and sign in
-2. Go to **Settings → Integrations → Add custom integration**
-3. Enter the connector URL:
-   ```
-   https://<your-vercel-domain>/api/mcp
-   ```
-4. If `MCP_AUTH_SECRET` is set, add an **Authorization header**:
-   ```
-   Authorization: Bearer <your-MCP_AUTH_SECRET-value>
-   ```
-5. Click **Connect** — Claude will call the endpoint to discover available tools
-
-#### Verifying the endpoint
-
-Run the included smoke test to confirm the endpoint is responding correctly
-before adding it to Claude:
-
-```bash
-# Against local dev server (no auth)
-node mcp/smoke-test.mjs
-
-# Against deployed instance with auth token
-node mcp/smoke-test.mjs https://quiver.example.com/api/mcp your-secret-token
-
-# Via env var
-MCP_AUTH_SECRET=your-secret node mcp/smoke-test.mjs https://quiver.example.com/api/mcp
-```
-
-The smoke test checks that `initialize` succeeds, `tools/list` returns all
-tools, and `get_dashboard_summary` (a read tool) responds correctly.
-
-#### Vercel runtime notes
-
-- The endpoint uses the **Node.js runtime** (required for Prisma). Edge runtime is not supported.
-- `maxDuration` is set to **60 seconds** (Vercel Hobby tier limit). On Pro, you can raise this to 300 s in `app/api/mcp/route.ts` if long-running tools (e.g. `log_performance` with AI synthesis) time out.
-- Each request creates a fresh MCP server instance (stateless mode). This is intentional — Vercel serverless does not share in-memory state between invocations.
-
-#### Troubleshooting
-
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `401 Unauthorized` | Token mismatch | Check `MCP_AUTH_SECRET` matches the `Authorization: Bearer …` header in connector settings |
-| `404` on connector URL | Route not deployed | Ensure `app/api/mcp/route.ts` is committed and Vercel build succeeded |
-| `500` on tool calls | Missing env var | Confirm `DATABASE_URL` and `ANTHROPIC_API_KEY` are set in Vercel |
-| Tool call times out | Vercel Hobby 60 s limit | Upgrade to Pro and raise `maxDuration` in the route file |
-| `DB connection` error locally | Prisma not connected | Run the Next.js dev server (`npm run dev`) with `DATABASE_URL` set in `.env.local` |
-
-#### Local dev with remote transport
-
-You can test the HTTP endpoint locally against your dev server:
-
-```bash
-# Start the dev server
-npm run dev
-
-# In another terminal, run the smoke test
-node mcp/smoke-test.mjs http://localhost:3000/api/mcp
-```
-
-#### Keeping stdio working
-
-The local `stdio` transport (`mcp/index.ts`) is **not affected** by this change.
-Claude Desktop, Cursor, and Windsurf users continue to use the stdio config
-documented above. The HTTP endpoint is additive — it runs as a Next.js API
-route and does not replace the standalone MCP server.
-
-### Available Tools
-
-| Tool | Description |
-|---|---|
-| `get_dashboard_summary` | Workspace overview — call first to orient |
-| `get_context` | Active product marketing context |
-| `get_context_history` | Context version history |
-| `propose_context_update` | Propose context changes (pending human review) |
-| `apply_context_update` | Apply context changes immediately (human-directed only) |
-| `restore_context_version` | Restore a previous context version |
-| `list_campaigns` | List campaigns by status |
-| `get_campaign` | Campaign details by ID or name |
-| `create_campaign` | Create a new campaign |
-| `update_campaign` | Update campaign fields |
-| `update_campaign_status` | Change campaign status |
-| `list_artifacts` | List artifacts with filters |
-| `get_artifact` | Full artifact content by ID or title |
-| `save_artifact` | Save a new artifact |
-| `update_artifact` | Update artifact (creates new version) |
-| `update_artifact_status` | Change artifact status (live triggers reminder) |
-| `log_performance` | Log results with AI synthesis |
-| `get_performance_log` | Performance log entries |
-| `get_close_the_loop_queue` | Artifacts awaiting results |
-| `list_proposals` | Pending context update proposals |
-| `action_proposal` | Approve or reject a proposal |
-| `list_sessions` | Recent AI sessions |
-| `get_session` | Full session with messages |
-
-### `propose_context_update` vs `apply_context_update`
-
-- **`propose_context_update`** (default, safe): Creates a pending proposal visible in the Quiver UI. Use when AI is suggesting changes based on analysis.
-- **`apply_context_update`** (immediate): Applies changes instantly with no review step. Use only when the human has explicitly stated the exact change they want.
-
----
-
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local dev setup, branch naming, how to add a new skill, and the PR checklist.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, branch naming, and PR checklist.
+
+Good first contributions:
+
+1. Rich text editing experience for Content body
+2. Additional MCP tool domains
+3. New session modes and mode-specific UX
+4. Expanded artifact-type to skill routing
+5. Content import implementation for Issue #50 (`TABSTACK_API_KEY`, import endpoint, UI)
 
 ---
 
 ## Documentation
 
-- Full product specification: [`SPEC.md`](SPEC.md)
-- Build prompt: [`PROMPT.md`](PROMPT.md)
+- Product specification: [`SPEC.md`](SPEC.md)
+- Agent instructions: [`CLAUDE.md`](CLAUDE.md), [`AGENTS.md`](AGENTS.md)
+- Build prompt context: [`PROMPT.md`](PROMPT.md)
 
 ---
 
@@ -295,4 +250,4 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local dev setup, branch naming, how
 
 ---
 
-*Built with the [marketingskills](https://github.com/coreyhaines31/marketingskills) framework by [@coreyhaines31](https://github.com/coreyhaines31).*
+Built with the [marketingskills](https://github.com/coreyhaines31/marketingskills) framework.
