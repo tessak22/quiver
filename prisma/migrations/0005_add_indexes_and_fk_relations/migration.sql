@@ -13,12 +13,32 @@ CREATE INDEX "performance_logs_contextUpdateStatus_idx" ON "performance_logs"("c
 CREATE INDEX "content_pieces_status_idx" ON "content_pieces"("status");
 
 -- TASK-029: Add FK relations for orphaned string ID fields
+-- Use NOT VALID to avoid failing on existing orphaned rows, then validate separately.
 
--- Artifact.parentArtifactId -> Artifact (self-referential)
-ALTER TABLE "artifacts" ADD CONSTRAINT "artifacts_parentArtifactId_fkey" FOREIGN KEY ("parentArtifactId") REFERENCES "artifacts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- Step 1: Clean up any orphaned references before adding constraints
+DELETE FROM "artifacts" a WHERE a."parentArtifactId" IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM "artifacts" p WHERE p."id" = a."parentArtifactId");
 
--- ContentPiece.artifactId -> Artifact
-ALTER TABLE "content_pieces" ADD CONSTRAINT "content_pieces_artifactId_fkey" FOREIGN KEY ("artifactId") REFERENCES "artifacts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+UPDATE "content_pieces" SET "artifactId" = NULL WHERE "artifactId" IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM "artifacts" WHERE "id" = "content_pieces"."artifactId");
 
--- ContentPiece.contextVersionId -> ContextVersion
-ALTER TABLE "content_pieces" ADD CONSTRAINT "content_pieces_contextVersionId_fkey" FOREIGN KEY ("contextVersionId") REFERENCES "context_versions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+UPDATE "content_pieces" SET "contextVersionId" = NULL WHERE "contextVersionId" IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM "context_versions" WHERE "id" = "content_pieces"."contextVersionId");
+
+-- Step 2: Add constraints as NOT VALID (instant, no full table scan)
+ALTER TABLE "artifacts" ADD CONSTRAINT "artifacts_parentArtifactId_fkey"
+  FOREIGN KEY ("parentArtifactId") REFERENCES "artifacts"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE NOT VALID;
+
+ALTER TABLE "content_pieces" ADD CONSTRAINT "content_pieces_artifactId_fkey"
+  FOREIGN KEY ("artifactId") REFERENCES "artifacts"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE NOT VALID;
+
+ALTER TABLE "content_pieces" ADD CONSTRAINT "content_pieces_contextVersionId_fkey"
+  FOREIGN KEY ("contextVersionId") REFERENCES "context_versions"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE NOT VALID;
+
+-- Step 3: Validate constraints (scans table but does not block writes)
+ALTER TABLE "artifacts" VALIDATE CONSTRAINT "artifacts_parentArtifactId_fkey";
+ALTER TABLE "content_pieces" VALIDATE CONSTRAINT "content_pieces_artifactId_fkey";
+ALTER TABLE "content_pieces" VALIDATE CONSTRAINT "content_pieces_contextVersionId_fkey";
