@@ -39,13 +39,31 @@ export function pickDefined<T extends Record<string, unknown>>(
 }
 
 /**
- * Parse an ISO date string, returning null if invalid.
- * Replaces the repeated date-parsing + isNaN check pattern.
+ * Parse an ISO date string with strict validation, returning null if invalid.
+ * Rejects lenient Date parsing (e.g. "2024-02-31" normalizing to March 2)
+ * by verifying the parsed date components match the input.
  */
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(T(\d{2}):(\d{2})(:(\d{2}))?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
 export function parseISODate(value: unknown): Date | null {
   if (typeof value !== 'string' || !value.trim()) return null;
+
+  const match = value.match(ISO_DATE_RE);
+  if (!match) return null;
+
   const date = new Date(value);
   if (isNaN(date.getTime())) return null;
+
+  // Verify the parsed date matches the input components to catch
+  // lenient normalization (e.g. Feb 31 → Mar 3)
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) {
+    return null;
+  }
+
   return date;
 }
 
