@@ -6,79 +6,92 @@
  *   background to propose context updates based on the results.
  *
  * AI synthesis is non-blocking — the log entry is returned immediately while
- * the synthesis runs asynchronously. Synthesis failures are silently caught
+ * the synthesis runs asynchronously. Synthesis failures are logged
  * so a logging action never fails due to AI issues.
  */
 
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, safeErrorMessage, parseISODate } from '@/lib/utils';
 import { createPerformanceLog, getPerformanceLogs } from '@/lib/db/performance';
 import { synthesizePerformance } from '@/lib/ai/synthesis-core';
 
 export async function GET(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('viewer');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const url = new URL(request.url);
   const artifactId = url.searchParams.get('artifactId');
   const campaignId = url.searchParams.get('campaignId');
 
-  const logs = await getPerformanceLogs({
-    artifactId: artifactId ?? undefined,
-    campaignId: campaignId ?? undefined,
-  });
+  try {
+    const logs = await getPerformanceLogs({
+      artifactId: artifactId ?? undefined,
+      campaignId: campaignId ?? undefined,
+    });
 
-  return NextResponse.json({ logs });
+    return NextResponse.json({ logs });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch performance logs') },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const body = parsed.data;
 
   if (!body.campaignId) {
     return NextResponse.json({ error: 'Campaign is required' }, { status: 400 });
   }
 
-  // Create the log entry
-  const log = await createPerformanceLog({
-    artifactId: typeof body.artifactId === 'string' ? body.artifactId : undefined,
-    campaignId: body.campaignId as string,
-    logType: typeof body.logType === 'string' ? body.logType : 'artifact',
-    metrics: isRecord(body.metrics) ? body.metrics : undefined,
-    qualitativeNotes: typeof body.qualitativeNotes === 'string' ? body.qualitativeNotes : undefined,
-    whatWorked: typeof body.whatWorked === 'string' ? body.whatWorked : undefined,
-    whatDidnt: typeof body.whatDidnt === 'string' ? body.whatDidnt : undefined,
-    recordedBy: user.id,
-    periodStart: typeof body.periodStart === 'string' ? new Date(body.periodStart) : undefined,
-    periodEnd: typeof body.periodEnd === 'string' ? new Date(body.periodEnd) : undefined,
-  });
+  // Validate date fields if provided
+  const periodStart = typeof body.periodStart === 'string' ? parseISODate(body.periodStart) : undefined;
+  const periodEnd = typeof body.periodEnd === 'string' ? parseISODate(body.periodEnd) : undefined;
 
-  // Trigger AI synthesis in background (non-blocking)
-  synthesizePerformance(log.id, {
-    whatWorked: typeof body.whatWorked === 'string' ? body.whatWorked : undefined,
-    whatDidnt: typeof body.whatDidnt === 'string' ? body.whatDidnt : undefined,
-    qualitativeNotes: typeof body.qualitativeNotes === 'string' ? body.qualitativeNotes : undefined,
-    metrics: isRecord(body.metrics) ? body.metrics : undefined,
-  }).catch(() => {
-    // Synthesis is best-effort, don't fail the log entry
-  });
+  if (typeof body.periodStart === 'string' && !periodStart) {
+    return NextResponse.json({ error: 'Invalid periodStart date' }, { status: 400 });
+  }
+  if (typeof body.periodEnd === 'string' && !periodEnd) {
+    return NextResponse.json({ error: 'Invalid periodEnd date' }, { status: 400 });
+  }
 
-  return NextResponse.json({ log });
+  try {
+    // Create the log entry
+    const log = await createPerformanceLog({
+      artifactId: typeof body.artifactId === 'string' ? body.artifactId : undefined,
+      campaignId: body.campaignId as string,
+      logType: typeof body.logType === 'string' ? body.logType : 'artifact',
+      metrics: isRecord(body.metrics) ? body.metrics : undefined,
+      qualitativeNotes: typeof body.qualitativeNotes === 'string' ? body.qualitativeNotes : undefined,
+      whatWorked: typeof body.whatWorked === 'string' ? body.whatWorked : undefined,
+      whatDidnt: typeof body.whatDidnt === 'string' ? body.whatDidnt : undefined,
+      recordedBy: auth.id,
+      periodStart: periodStart ?? undefined,
+      periodEnd: periodEnd ?? undefined,
+    });
+
+    // Trigger AI synthesis in background (non-blocking)
+    synthesizePerformance(log.id, {
+      whatWorked: typeof body.whatWorked === 'string' ? body.whatWorked : undefined,
+      whatDidnt: typeof body.whatDidnt === 'string' ? body.whatDidnt : undefined,
+      qualitativeNotes: typeof body.qualitativeNotes === 'string' ? body.qualitativeNotes : undefined,
+      metrics: isRecord(body.metrics) ? body.metrics : undefined,
+    }).catch((err: unknown) => console.error('[synthesis] Background synthesis failed:', err));
+
+    return NextResponse.json({ log }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to create performance log') },
+      { status: 500 }
+    );
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

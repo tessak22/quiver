@@ -1,17 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import { getContentPiece, addDistribution } from '@/lib/db/content';
 
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const existing = await getContentPiece(params.id);
@@ -19,12 +16,8 @@ export async function POST(
       return NextResponse.json({ error: 'Content piece not found' }, { status: 404 });
     }
 
-    let body: Record<string, unknown>;
-    try {
-      body = await request.json() as Record<string, unknown>;
-    } catch {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-    }
+    const { data: body, error } = await parseJsonBody(request);
+    if (error) return error;
 
     if (!body.channel) {
       return NextResponse.json(
@@ -35,14 +28,14 @@ export async function POST(
 
     let publishedAt: Date | undefined;
     if (body.publishedAt) {
-      const d = new Date(body.publishedAt as string);
-      if (isNaN(d.getTime())) {
+      const parsed = parseISODate(body.publishedAt);
+      if (!parsed) {
         return NextResponse.json(
           { error: 'Invalid publishedAt date format. Use ISO 8601 (e.g. 2026-04-11).' },
           { status: 400 }
         );
       }
-      publishedAt = d;
+      publishedAt = parsed;
     }
 
     const distribution = await addDistribution({
@@ -56,7 +49,9 @@ export async function POST(
 
     return NextResponse.json({ distribution }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to add distribution';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to add distribution') },
+      { status: 500 }
+    );
   }
 }

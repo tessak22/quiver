@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { getAuthUser } from '@/lib/auth';
+import { parseJsonBody } from '@/lib/utils';
+import { aiRateLimiter } from '@/lib/rate-limit';
 import { sendMessage } from '@/lib/ai/client';
 
 const STEP_PROMPTS: Record<number, (data: Record<string, string>) => string> = {
@@ -39,20 +41,16 @@ Structure these into VBF messaging pillars (Value, Benefit, Feature for each). R
 };
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await getAuthUser();
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!aiRateLimiter.check(auth.id)) {
+    return NextResponse.json({ error: 'Too many AI requests. Please wait.' }, { status: 429 });
   }
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
-  const { step, data } = body;
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const { step, data } = parsed.data;
 
   const promptFn = STEP_PROMPTS[step as number];
   if (!promptFn) {
@@ -61,7 +59,7 @@ export async function POST(request: Request) {
 
   const result = await sendMessage({
     system: 'You are helping a product team set up their marketing context. Be concise and specific. Always return valid JSON only, no markdown formatting.',
-    messages: [{ role: 'user', content: promptFn(data) }],
+    messages: [{ role: 'user', content: promptFn(data as Record<string, string>) }],
     maxTokens: 1024,
   });
 

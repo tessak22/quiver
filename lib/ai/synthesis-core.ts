@@ -23,14 +23,14 @@ import { getActiveContext } from '@/lib/db/context';
 import { updatePerformanceLog } from '@/lib/db/performance';
 import type { ContextUpdateProposal } from '@/types';
 
-export interface SynthesisInput {
+interface SynthesisInput {
   whatWorked?: string;
   whatDidnt?: string;
   qualitativeNotes?: string;
   metrics?: Record<string, unknown>;
 }
 
-export interface SynthesisResult {
+interface SynthesisResult {
   proposals: ContextUpdateProposal[];
 }
 

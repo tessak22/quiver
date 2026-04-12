@@ -1,17 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import { getContentPiece, updateContentPiece, getContentPerformanceSignal } from '@/lib/db/content';
 
 export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('viewer');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const piece = await getContentPiece(params.id);
@@ -25,8 +22,10 @@ export async function GET(
       performanceSignal: getContentPerformanceSignal(piece.metricSnapshots),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch content piece';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch content piece') },
+      { status: 500 }
+    );
   }
 }
 
@@ -34,12 +33,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const existing = await getContentPiece(params.id);
@@ -47,12 +42,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Content piece not found' }, { status: 404 });
     }
 
-    let body: Record<string, unknown>;
-    try {
-      body = await request.json() as Record<string, unknown>;
-    } catch {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-    }
+    const { data: body, error } = await parseJsonBody(request);
+    if (error) return error;
 
     // If status changes to 'published' and publishedAt is null, set it
     const updateData: Record<string, unknown> = {};
@@ -78,14 +69,14 @@ export async function PATCH(
       if (body.publishedAt === null || body.publishedAt === '') {
         updateData.publishedAt = null;
       } else {
-        const d = new Date(body.publishedAt as string);
-        if (isNaN(d.getTime())) {
+        const parsed = parseISODate(body.publishedAt);
+        if (!parsed) {
           return NextResponse.json(
             { error: 'Invalid publishedAt date format. Use ISO 8601 (e.g. 2026-04-11).' },
             { status: 400 }
           );
         }
-        updateData.publishedAt = d;
+        updateData.publishedAt = parsed;
       }
     }
 
@@ -114,8 +105,10 @@ export async function PATCH(
       performanceSignal: getContentPerformanceSignal(piece.metricSnapshots),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update content piece';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to update content piece') },
+      { status: 500 }
+    );
   }
 }
 
@@ -123,12 +116,8 @@ export async function DELETE(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const existing = await getContentPiece(params.id);
@@ -144,7 +133,9 @@ export async function DELETE(
       performanceSignal: getContentPerformanceSignal(piece.metricSnapshots),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to delete content piece';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to delete content piece') },
+      { status: 500 }
+    );
   }
 }

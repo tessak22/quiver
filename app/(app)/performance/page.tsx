@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -407,13 +408,19 @@ function LogEntry({
 // ---------------------------------------------------------------------------
 
 export default function PerformancePage() {
+  const searchParams = useSearchParams();
+  const initialArtifactId = searchParams.get('artifactId');
+
   // Data state
   const [logs, setLogs] = useState<PerformanceLogRecord[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
   const [artifacts, setArtifacts] = useState<ArtifactOption[]>([]);
 
   // Form state
-  const [form, setForm] = useState<LogFormData>(EMPTY_FORM);
+  const [form, setForm] = useState<LogFormData>({
+    ...EMPTY_FORM,
+    ...(initialArtifactId ? { artifactId: initialArtifactId } : {}),
+  });
 
   // Filter state
   const [filterCampaign, setFilterCampaign] = useState('');

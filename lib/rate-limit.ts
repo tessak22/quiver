@@ -66,11 +66,13 @@ export class RateLimiter {
 
 /**
  * Extract client IP from request headers.
+ * Prefers x-real-ip (set by Vercel from actual connection) over
+ * x-forwarded-for (which can be spoofed by the client).
  */
 export function getClientIp(request: Request): string {
   return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
     request.headers.get('x-real-ip') ??
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
     'unknown'
   );
 }
@@ -80,3 +82,9 @@ export function getClientIp(request: Request): string {
  * 60 requests per minute per IP.
  */
 export const publicContentLimiter = new RateLimiter(60, 60_000);
+
+/**
+ * Rate limiter for AI-calling endpoints.
+ * 20 requests per minute per user ID.
+ */
+export const aiRateLimiter = new RateLimiter(20, 60_000);

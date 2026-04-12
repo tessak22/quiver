@@ -21,6 +21,10 @@ import type { SessionMode, ArtifactType } from '@/types';
 
 const SKILLS_DIR = join(process.cwd(), 'skills');
 
+// In-memory cache for skill file contents (TTL: 5 minutes)
+const SKILL_CACHE_TTL = 300_000;
+const skillCache = new Map<string, { content: string; loadedAt: number }>();
+
 /** Skills loaded per session mode */
 const MODE_SKILLS: Record<SessionMode, string[]> = {
   strategy: [
@@ -73,12 +77,20 @@ function isValidSkillName(name: string): boolean {
 
 export function loadSkills(skillNames: string[]): string {
   const sections: string[] = [];
+  const now = Date.now();
 
   for (const name of skillNames) {
     if (!isValidSkillName(name)) {
       throw new Error(
         `Invalid skill name: "${name}". Skill names may only contain letters, numbers, hyphens, and underscores.`
       );
+    }
+
+    // Check cache first
+    const cached = skillCache.get(name);
+    if (cached && now - cached.loadedAt < SKILL_CACHE_TTL) {
+      sections.push(`## Skill: ${name}\n\n${cached.content}`);
+      continue;
     }
 
     const filePath = join(SKILLS_DIR, name, 'SKILL.md');
@@ -99,6 +111,9 @@ export function loadSkills(skillNames: string[]): string {
           `The skills directory may be corrupted. Try updating skills from settings.`
       );
     }
+
+    // Cache the loaded content
+    skillCache.set(name, { content, loadedAt: now });
 
     sections.push(`## Skill: ${name}\n\n${content}`);
   }

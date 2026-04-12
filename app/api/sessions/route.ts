@@ -1,26 +1,37 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
 import { getSessions } from '@/lib/db/sessions';
+import { safeErrorMessage } from '@/lib/utils';
+import { SESSION_MODES } from '@/types';
 import type { SessionMode } from '@/types';
 
 export async function GET(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await requireRole('viewer');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const url = new URL(request.url);
-  const mode = url.searchParams.get('mode') as SessionMode | null;
+  const mode = url.searchParams.get('mode');
   const campaignId = url.searchParams.get('campaignId');
   const archived = url.searchParams.get('archived') === 'true';
 
-  const sessions = await getSessions({
-    mode: mode ?? undefined,
-    campaignId: campaignId ?? undefined,
-    isArchived: archived,
-  });
+  if (mode && !SESSION_MODES.includes(mode as SessionMode)) {
+    return NextResponse.json({ error: 'Invalid mode' }, { status: 400 });
+  }
 
-  return NextResponse.json({ sessions });
+  try {
+    const sessions = await getSessions({
+      mode: (mode as SessionMode) ?? undefined,
+      campaignId: campaignId ?? undefined,
+      isArchived: archived,
+    });
+
+    return NextResponse.json({ sessions });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch sessions') },
+      { status: 500 }
+    );
+  }
 }

@@ -147,6 +147,30 @@ export function registerResearchTools(server: McpServer) {
     },
     async (args) => {
       try {
+        // Validate source_type
+        const VALID_SOURCE_TYPES = [
+          'call', 'interview', 'survey', 'review', 'forum',
+          'support_ticket', 'social', 'common_room', 'other',
+        ] as const;
+        if (!VALID_SOURCE_TYPES.includes(args.source_type as typeof VALID_SOURCE_TYPES[number])) {
+          return error(
+            `Invalid source_type '${args.source_type}'. Valid values: ${VALID_SOURCE_TYPES.join(', ')}`
+          );
+        }
+
+        // Validate contact_stage if provided
+        const VALID_CONTACT_STAGES = [
+          'prospect', 'customer', 'churned', 'never_converted',
+        ] as const;
+        if (
+          args.contact_stage !== undefined &&
+          !VALID_CONTACT_STAGES.includes(args.contact_stage as typeof VALID_CONTACT_STAGES[number])
+        ) {
+          return error(
+            `Invalid contact_stage '${args.contact_stage}'. Valid values: ${VALID_CONTACT_STAGES.join(', ')}`
+          );
+        }
+
         const resolvedCampaignId = await resolveCampaignId(
           args.campaign_id,
           args.campaign_name

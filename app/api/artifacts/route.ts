@@ -1,23 +1,19 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
 import { createArtifact, getArtifacts } from '@/lib/db/artifacts';
 import { getDefaultCampaign } from '@/lib/db/campaigns';
 import { getActiveContext } from '@/lib/db/context';
+import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await requireRole('member');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const body = parsed.data;
 
   if (!body.title || !body.type || !body.content) {
     return NextResponse.json(
@@ -26,44 +22,49 @@ export async function POST(request: Request) {
     );
   }
 
-  // If no campaign specified, use the default campaign
-  let campaignId = body.campaignId;
-  if (!campaignId) {
-    const unassigned = await getDefaultCampaign();
-    if (unassigned) {
-      campaignId = unassigned.id;
-    } else {
-      return NextResponse.json(
-        { error: 'No campaign available. Create a campaign first.' },
-        { status: 400 }
-      );
+  try {
+    // If no campaign specified, use the default campaign
+    let campaignId = body.campaignId as string | undefined;
+    if (!campaignId) {
+      const unassigned = await getDefaultCampaign();
+      if (unassigned) {
+        campaignId = unassigned.id;
+      } else {
+        return NextResponse.json(
+          { error: 'No campaign available. Create a campaign first.' },
+          { status: 400 }
+        );
+      }
     }
+
+    // Get active context version
+    const activeContext = await getActiveContext();
+
+    const artifact = await createArtifact({
+      title: body.title as string,
+      type: body.type as string,
+      content: body.content as string,
+      skillUsed: body.skillUsed as string | undefined,
+      campaignId,
+      sessionId: body.sessionId as string | undefined,
+      contextVersionId: activeContext?.id,
+      tags: (body.tags as string[]) ?? [],
+      createdBy: auth.id,
+    });
+
+    return NextResponse.json({ artifact }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to create artifact') },
+      { status: 500 }
+    );
   }
-
-  // Get active context version
-  const activeContext = await getActiveContext();
-
-  const artifact = await createArtifact({
-    title: body.title,
-    type: body.type,
-    content: body.content,
-    skillUsed: body.skillUsed,
-    campaignId,
-    sessionId: body.sessionId,
-    contextVersionId: activeContext?.id,
-    tags: body.tags ?? [],
-    createdBy: user.id,
-  });
-
-  return NextResponse.json({ artifact });
 }
 
 export async function GET(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await requireRole('viewer');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const url = new URL(request.url);
@@ -72,12 +73,19 @@ export async function GET(request: Request) {
   const status = url.searchParams.get('status');
   const search = url.searchParams.get('search');
 
-  const artifacts = await getArtifacts({
-    type: type ?? undefined,
-    campaignId: campaignId ?? undefined,
-    status: status ?? undefined,
-    search: search ?? undefined,
-  });
+  try {
+    const artifacts = await getArtifacts({
+      type: type ?? undefined,
+      campaignId: campaignId ?? undefined,
+      status: status ?? undefined,
+      search: search ?? undefined,
+    });
 
-  return NextResponse.json({ artifacts });
+    return NextResponse.json({ artifacts });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch artifacts') },
+      { status: 500 }
+    );
+  }
 }

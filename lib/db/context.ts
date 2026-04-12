@@ -12,12 +12,6 @@ export async function getContextVersions() {
   });
 }
 
-export async function getContextVersion(id: string) {
-  return prisma.contextVersion.findUnique({
-    where: { id },
-  });
-}
-
 export async function createContextVersion(data: {
   positioningStatement?: string | null;
   icpDefinition?: unknown;

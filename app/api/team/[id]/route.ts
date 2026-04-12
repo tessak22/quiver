@@ -1,89 +1,82 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 import {
-  getTeamMember,
   getAdminCount,
+  getTeamMember,
   updateTeamMemberRole,
   deleteTeamMember,
 } from '@/lib/db/team';
-import { TEAM_ROLES } from '@/types';
+import { TEAM_ROLES, type TeamRole } from '@/types';
 
 export async function PATCH(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('admin');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const { role } = parsed.data;
 
-  const requester = await getTeamMember(user.id);
-
-  if (!requester || requester.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
-
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
-  const { role } = body;
-
-  if (!TEAM_ROLES.includes(role)) {
+  if (!TEAM_ROLES.includes(role as TeamRole)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
   }
 
-  // Prevent demoting the last admin
-  if (params.id === user.id && role !== 'admin') {
-    const adminCount = await getAdminCount();
-    if (adminCount <= 1) {
-      return NextResponse.json(
-        { error: 'Cannot demote the last admin' },
-        { status: 400 }
-      );
+  const validRole = role as TeamRole;
+
+  try {
+    // Prevent demoting the last admin
+    if (params.id === auth.id && validRole !== 'admin') {
+      const adminCount = await getAdminCount();
+      if (adminCount <= 1) {
+        return NextResponse.json(
+          { error: 'Cannot demote the last admin' },
+          { status: 400 }
+        );
+      }
     }
+
+    const member = await updateTeamMemberRole(params.id, validRole);
+
+    return NextResponse.json({ member });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to update team member role') },
+      { status: 500 }
+    );
   }
-
-  const member = await updateTeamMemberRole(params.id, role);
-
-  return NextResponse.json({ member });
 }
 
 export async function DELETE(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('admin');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  try {
+    // Can't remove yourself if you're the last admin
+    const target = await getTeamMember(params.id);
 
-  const requester = await getTeamMember(user.id);
-
-  if (!requester || requester.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
-
-  // Can't remove yourself if you're the last admin
-  const target = await getTeamMember(params.id);
-
-  if (target?.role === 'admin') {
-    const adminCount = await getAdminCount();
-    if (adminCount <= 1) {
-      return NextResponse.json(
-        { error: 'Cannot remove the last admin' },
-        { status: 400 }
-      );
+    if (target?.role === 'admin') {
+      const adminCount = await getAdminCount();
+      if (adminCount <= 1) {
+        return NextResponse.json(
+          { error: 'Cannot remove the last admin' },
+          { status: 400 }
+        );
+      }
     }
+
+    await deleteTeamMember(params.id);
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to remove team member') },
+      { status: 500 }
+    );
   }
-
-  await deleteTeamMember(params.id);
-
-  return NextResponse.json({ success: true });
 }

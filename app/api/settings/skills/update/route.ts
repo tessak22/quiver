@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { getTeamMemberRole } from '@/lib/db/team';
+import { requireRole } from '@/lib/auth';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -24,19 +23,8 @@ const REPO_NAME = 'marketingskills';
 const GITHUB_API = 'https://api.github.com';
 
 export async function POST() {
-  // Authenticate
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  // Admin-only
-  const member = await getTeamMemberRole(user.id);
-  if (!member || member.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const auth = await requireRole('admin');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     // 1. Get latest commit hash

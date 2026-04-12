@@ -29,7 +29,7 @@ export interface AIError {
   cause?: unknown;
 }
 
-export interface StreamOptions {
+interface StreamOptions {
   system: string;
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   maxTokens?: number;

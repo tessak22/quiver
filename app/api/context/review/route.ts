@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody } from '@/lib/utils';
+import { aiRateLimiter } from '@/lib/rate-limit';
 import { sendMessage } from '@/lib/ai/client';
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!aiRateLimiter.check(auth.id)) {
+    return NextResponse.json({ error: 'Too many AI requests. Please wait.' }, { status: 429 });
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json() as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const body = parsed.data;
 
   const {
     positioningStatement,
@@ -40,8 +39,8 @@ export async function POST(request: Request) {
     proofPoints ? `Proof Points:\n${typeof proofPoints === 'string' ? proofPoints : JSON.stringify(proofPoints, null, 2)}` : null,
     activeHypotheses ? `Active Hypotheses:\n${typeof activeHypotheses === 'string' ? activeHypotheses : JSON.stringify(activeHypotheses, null, 2)}` : null,
     brandVoice ? `Brand Voice:\n${brandVoice}` : null,
-    Array.isArray(wordsToUse) && wordsToUse.length > 0 ? `Words to Use:\n${wordsToUse.join(', ')}` : null,
-    Array.isArray(wordsToAvoid) && wordsToAvoid.length > 0 ? `Words to Avoid:\n${wordsToAvoid.join(', ')}` : null,
+    Array.isArray(wordsToUse) && wordsToUse.length > 0 ? `Words to Use:\n${(wordsToUse as string[]).join(', ')}` : null,
+    Array.isArray(wordsToAvoid) && wordsToAvoid.length > 0 ? `Words to Avoid:\n${(wordsToAvoid as string[]).join(', ')}` : null,
   ]
     .filter(Boolean)
     .join('\n\n---\n\n');
@@ -83,10 +82,10 @@ Keep each issue description concise (1-2 sentences).`,
   }
 
   try {
-    const parsed = JSON.parse(result.content) as { issues: string[]; isConsistent: boolean };
+    const parsedResult = JSON.parse(result.content) as { issues: string[]; isConsistent: boolean };
     return NextResponse.json({
-      issues: Array.isArray(parsed.issues) ? parsed.issues : [],
-      isConsistent: Boolean(parsed.isConsistent),
+      issues: Array.isArray(parsedResult.issues) ? parsedResult.issues : [],
+      isConsistent: Boolean(parsedResult.isConsistent),
     });
   } catch {
     // If AI didn't return valid JSON, wrap its response as a single issue

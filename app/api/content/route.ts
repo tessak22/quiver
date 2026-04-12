@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 import {
   createContentPiece,
   getContentPieces,
@@ -10,12 +11,8 @@ import {
 import { getActiveContext } from '@/lib/db/context';
 
 export async function GET(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
+  const auth = await requireRole('viewer');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const url = new URL(request.url);
@@ -38,37 +35,74 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ contentPieces: results });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch content';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to fetch content') },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const { data: body, error } = await parseJsonBody(request);
+  if (error) return error;
+
+  // Validate required fields
+  if (typeof body.title !== 'string' || !body.title.trim()) {
+    return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+  }
+  if (typeof body.body !== 'string') {
+    return NextResponse.json({ error: 'Body is required' }, { status: 400 });
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json() as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  // Validate optional string fields
+  if (body.contentType !== undefined && typeof body.contentType !== 'string') {
+    return NextResponse.json({ error: 'Invalid content type' }, { status: 400 });
+  }
+  if (body.excerpt !== undefined && typeof body.excerpt !== 'string') {
+    return NextResponse.json({ error: 'Invalid excerpt' }, { status: 400 });
+  }
+  if (body.slug !== undefined && typeof body.slug !== 'string') {
+    return NextResponse.json({ error: 'Invalid slug' }, { status: 400 });
+  }
+  if (body.metaTitle !== undefined && typeof body.metaTitle !== 'string') {
+    return NextResponse.json({ error: 'Invalid metaTitle' }, { status: 400 });
+  }
+  if (body.metaDescription !== undefined && typeof body.metaDescription !== 'string') {
+    return NextResponse.json({ error: 'Invalid metaDescription' }, { status: 400 });
+  }
+  if (body.targetKeyword !== undefined && typeof body.targetKeyword !== 'string') {
+    return NextResponse.json({ error: 'Invalid targetKeyword' }, { status: 400 });
+  }
+  if (body.canonicalUrl !== undefined && typeof body.canonicalUrl !== 'string') {
+    return NextResponse.json({ error: 'Invalid canonicalUrl' }, { status: 400 });
+  }
+  if (body.ogTitle !== undefined && typeof body.ogTitle !== 'string') {
+    return NextResponse.json({ error: 'Invalid ogTitle' }, { status: 400 });
+  }
+  if (body.ogDescription !== undefined && typeof body.ogDescription !== 'string') {
+    return NextResponse.json({ error: 'Invalid ogDescription' }, { status: 400 });
+  }
+  if (body.ogImageUrl !== undefined && typeof body.ogImageUrl !== 'string') {
+    return NextResponse.json({ error: 'Invalid ogImageUrl' }, { status: 400 });
+  }
+  if (body.twitterCardType !== undefined && typeof body.twitterCardType !== 'string') {
+    return NextResponse.json({ error: 'Invalid twitterCardType' }, { status: 400 });
   }
 
-  if (!body.title || !body.body) {
-    return NextResponse.json(
-      { error: 'Title and body are required' },
-      { status: 400 }
-    );
+  // Validate optional array field
+  if (body.secondaryKeywords !== undefined) {
+    if (!Array.isArray(body.secondaryKeywords) || !body.secondaryKeywords.every((k: unknown) => typeof k === 'string')) {
+      return NextResponse.json({ error: 'secondaryKeywords must be an array of strings' }, { status: 400 });
+    }
   }
 
   try {
     // Check slug uniqueness if explicitly provided
     if (typeof body.slug === 'string' && body.slug.trim()) {
-      const available = await isSlugAvailable(body.slug as string);
+      const available = await isSlugAvailable(body.slug);
       if (!available) {
         return NextResponse.json(
           { error: 'Slug already taken' },
@@ -80,15 +114,15 @@ export async function POST(request: Request) {
     const activeContext = await getActiveContext();
 
     const slug = typeof body.slug === 'string' && body.slug.trim()
-      ? body.slug as string
-      : await generateSlug(body.title as string);
+      ? body.slug
+      : await generateSlug(body.title);
 
     const piece = await createContentPiece({
-      title: body.title as string,
+      title: body.title,
       slug,
       contentType: (body.contentType as string) ?? 'other',
       status: (body.status as string) ?? 'draft',
-      body: body.body as string,
+      body: body.body,
       excerpt: body.excerpt as string | undefined,
       metaTitle: body.metaTitle as string | undefined,
       metaDescription: body.metaDescription as string | undefined,
@@ -104,12 +138,14 @@ export async function POST(request: Request) {
       parentContentId: body.parentContentId as string | undefined,
       artifactId: body.artifactId as string | undefined,
       contextVersionId: activeContext?.id,
-      createdBy: user.id,
+      createdBy: auth.id,
     });
 
     return NextResponse.json({ contentPiece: piece }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to create content';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to create content') },
+      { status: 500 }
+    );
   }
 }

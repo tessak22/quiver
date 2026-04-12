@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/auth';
+import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 import { getActiveContext } from '@/lib/db/context';
 import { getSession } from '@/lib/db/sessions';
 import { getDefaultCampaign } from '@/lib/db/campaigns';
@@ -33,19 +34,12 @@ function safeStringify(value: unknown): string {
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const auth = await requireRole('member');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  let body: { field?: string; proposedValue?: string; sessionId?: string };
-  try {
-    body = await request.json() as typeof body;
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (parsed.error) return parsed.error;
+  const body = parsed.data as { field?: string; proposedValue?: string; sessionId?: string };
 
   const { field, proposedValue, sessionId } = body;
 
@@ -70,45 +64,52 @@ export async function POST(request: Request) {
     );
   }
 
-  // Verify session exists
-  const session = await getSession(sessionId);
-  if (!session) {
-    return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-  }
-
-  // Get current active context value
-  const activeContext = await getActiveContext();
-  const currentValue = activeContext ? safeStringify(activeContext[field]) : '';
-
-  // We need a campaignId for the performance log.
-  // Use the session's campaign if available, otherwise use the default campaign.
-  let campaignId = session.campaignId;
-  if (!campaignId) {
-    const defaultCampaign = await getDefaultCampaign();
-    if (!defaultCampaign) {
-      return NextResponse.json(
-        { error: 'No campaign associated with this session and no default campaign exists' },
-        { status: 400 }
-      );
+  try {
+    // Verify session exists
+    const session = await getSession(sessionId);
+    if (!session) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
-    campaignId = defaultCampaign.id;
+
+    // Get current active context value
+    const activeContext = await getActiveContext();
+    const currentValue = activeContext ? safeStringify(activeContext[field]) : '';
+
+    // We need a campaignId for the performance log.
+    // Use the session's campaign if available, otherwise use the default campaign.
+    let campaignId = session.campaignId;
+    if (!campaignId) {
+      const defaultCampaign = await getDefaultCampaign();
+      if (!defaultCampaign) {
+        return NextResponse.json(
+          { error: 'No campaign associated with this session and no default campaign exists' },
+          { status: 400 }
+        );
+      }
+      campaignId = defaultCampaign.id;
+    }
+
+    // Create performance log with proposed context update
+    await createPerformanceLog({
+      campaignId,
+      logType: 'campaign',
+      qualitativeNotes: `Context update proposed from session: ${session.title ?? 'Untitled'}`,
+      proposedContextUpdates: [
+        {
+          field,
+          current: currentValue,
+          proposed: proposedValue.trim(),
+          rationale: 'Proposed from session',
+        },
+      ],
+      recordedBy: auth.id,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to create context proposal') },
+      { status: 500 }
+    );
   }
-
-  // Create performance log with proposed context update
-  await createPerformanceLog({
-    campaignId,
-    logType: 'campaign',
-    qualitativeNotes: `Context update proposed from session: ${session.title ?? 'Untitled'}`,
-    proposedContextUpdates: [
-      {
-        field,
-        current: currentValue,
-        proposed: proposedValue.trim(),
-        rationale: 'Proposed from session',
-      },
-    ],
-    recordedBy: user.id,
-  });
-
-  return NextResponse.json({ success: true });
 }
