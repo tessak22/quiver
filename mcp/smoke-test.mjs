@@ -79,7 +79,9 @@ async function rpc(body) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      for (const line of buffer.split('\n')) {
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
         if (line.startsWith('data: ') && line.slice(6).trim()) {
           reader.cancel();
           return JSON.parse(line.slice(6));
