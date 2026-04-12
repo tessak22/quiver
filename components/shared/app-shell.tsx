@@ -21,6 +21,7 @@ import {
   PanelLeftOpen,
   Settings,
   LogOut,
+  BowArrow,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/shared/theme-toggle';
 
@@ -63,7 +64,8 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
         <div className="flex h-full flex-col">
           {/* Logo */}
           <div className="flex h-14 items-center border-b px-4">
-            <Link href="/dashboard" className="text-lg font-bold tracking-tight">
+            <Link href="/dashboard" className="flex items-center gap-2 text-lg font-bold tracking-tight">
+              <BowArrow className="h-5 w-5 text-primary" />
               Quiver
             </Link>
           </div>
