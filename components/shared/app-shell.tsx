@@ -40,6 +40,7 @@ const NAV_ITEMS = [
   { label: 'Content', href: '/content', icon: FileEdit },
   { label: 'Context', href: '/context', icon: BookOpen },
   { label: 'Performance', href: '/performance', icon: BarChart3 },
+  { label: 'Docs', href: '/docs', icon: BookOpen },
 ];
 
 export function AppShell({ user, contextVersion, pendingProposals, children }: AppShellProps) {

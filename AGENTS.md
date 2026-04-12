@@ -1,3 +1,8 @@
+# Quiver — Agent Instructions
+
+This file is read automatically by AI coding agents (Cursor, Polyscope, Codex, etc.).
+Claude Code users: see CLAUDE.md — same content, same rules.
+
 # Quiver — Claude Code Instructions
 
 > Sync Notice: `CLAUDE.md` and `AGENTS.md` must remain in sync. Any rule change in one must be mirrored in the other.

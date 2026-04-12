@@ -1,6 +1,6 @@
-# Quiver — Product Specification
+# Quiver - Product Specification
 
-**Version:** 1.0  
+**Version:** 1.1  
 **License:** MIT  
 **Repo:** github.com/tessak22/quiver  
 **Deploy target:** Vercel  
@@ -12,35 +12,36 @@
 
 Quiver is a self-hosted, open source, AI-powered marketing command center for product teams.
 
-It is not a generic AI chat interface. It is a context machine: every session starts with a complete, structured understanding of your product's positioning, ICP, competitive landscape, past campaigns, and what has worked. The AI outputs are grounded in your actual history, not generic best practices.
+It is not generic chat. It is a context machine: every session starts with structured product context plus what has and has not worked so far. Output quality improves as teams log more performance, research, and published content.
 
-Any product team can run Quiver. Deploy your own instance, complete the onboarding flow to define your product context, invite your teammates, and start working. Each deployment is a single workspace — shared context, shared campaigns, shared artifact library — accessible to everyone on the team.
+Each deployment is a single workspace for one team. Teams own their own database, keys, and infrastructure.
 
-The system compounds: every result you log makes the next session smarter. Over time, the product marketing context becomes a proprietary asset — your specific what-works record, encoded and searchable, informing every new piece of work automatically.
-
-> **Core principle:** The grounding is the product. Generic AI ideas are cheap. Ideas grounded in your positioning, your ICP, your historical performance, and your competitive context are the actual value. Everything in this spec serves that principle.
+> Core principle: grounding is the product. Context and feedback loops are the differentiator.
 
 ---
 
 ## What Quiver is not
 
-- A replacement for Notion, Linear, or your CRM — it is the AI work layer
-- A generic AI marketing tool — all skill frameworks come from the [marketingskills repo](https://github.com/coreyhaines31/marketingskills), your product context makes them specific to you
-- A solo tool — built for shared team access from day one
-- A multi-tenant SaaS — each team deploys and owns their own instance
+- Not a multi-tenant SaaS
+- Not a CRM replacement
+- Not an email sending platform
+- Not an API-first data warehouse
 
 ---
 
 ## Architecture overview
 
-Four layers:
+Quiver currently operates as seven connected layers:
 
-| Layer | What it is |
+| Layer | What it does |
 |---|---|
-| **Context** | The living product marketing context. Structured fields, versioned, team-editable. Every AI session reads this first. |
-| **Work** | AI sessions with explicit mode selection. Five modes, each loading the appropriate skill frameworks automatically. |
-| **Artifacts** | Every output produced is saved to the artifact library. Tagged, versioned, linked to campaigns and performance. |
-| **Track** | Campaign tracker and performance log. Results feed the learning loop back into context. |
+| Context | Versioned product marketing context (`context_versions`) used in every session |
+| Sessions | Five explicit AI session modes with skill loading and prompt assembly |
+| Artifacts | Versioned output library with status workflow and campaign links |
+| Performance | Metric + qualitative logs with proposal workflow and close-the-loop queue |
+| Content | Markdown content store with SEO/OG metadata, distribution tracking, and metric snapshots |
+| Research | Research entries + extracted quote library with async AI processing |
+| MCP | Tool surface for external MCP clients (stdio server + HTTP endpoint) |
 
 ---
 
@@ -54,450 +55,574 @@ Four layers:
 | Database | Supabase (Postgres) |
 | ORM | Prisma |
 | Auth | Supabase Auth |
-| AI | Anthropic SDK — `claude-sonnet-4-20250514` |
-| Skills | Markdown files from `coreyhaines31/marketingskills`, pinned at a specific commit in `/skills` |
+| AI | Anthropic SDK (`claude-sonnet-4-20250514`) |
+| Skills | Markdown files pinned in `/skills` |
+| MCP | `mcp/` stdio server + `/api/mcp` Streamable HTTP endpoint |
 | Deployment | Vercel |
-| Language | TypeScript strict mode throughout |
+| Language | TypeScript strict mode |
 
 ---
 
 ## Database schema
 
 ### `context_versions`
-The living product marketing context. One `isActive: true` row at any time. All previous versions retained.
+Versioned product marketing context. Exactly one active row.
 
 | Column | Type | Description |
 |---|---|---|
 | id | uuid PK | Auto-generated |
-| version | integer | Auto-incremented |
-| isActive | boolean | True for current version only |
-| positioningStatement | text | Core positioning statement |
-| icpDefinition | jsonb | Structured ICP: segments, stack rank, exclusions |
-| messagingPillars | jsonb | Array of value/benefit/feature pillars |
-| competitiveLandscape | jsonb | Competitor summaries with positioning notes |
-| customerLanguage | jsonb | Verbatim phrases: how they describe the problem |
-| proofPoints | jsonb | Validated claims, metrics, testimonials |
-| activeHypotheses | jsonb | Marked with validation status |
-| brandVoice | text | Tone, style, dos and don'ts |
-| wordsToUse | text[] | Approved vocabulary |
+| version | int | Incrementing version number |
+| isActive | bool | Active context marker |
+| positioningStatement | text | Positioning statement |
+| icpDefinition | jsonb | ICP structure |
+| messagingPillars | jsonb | Messaging framework |
+| competitiveLandscape | jsonb | Competitor notes |
+| customerLanguage | jsonb | VoC language store |
+| proofPoints | jsonb | Claims and proof |
+| activeHypotheses | jsonb | Hypothesis list |
+| brandVoice | text | Voice guidance |
+| wordsToUse | text[] | Preferred vocabulary |
 | wordsToAvoid | text[] | Banned vocabulary |
-| updatedBy | uuid FK | Team member who made the change |
-| updateSource | text | `manual` \| `ai_proposed` \| `feedback_session` |
-| changeSummary | text | What changed and why |
+| updatedBy | text | Actor |
+| updateSource | text | `manual` / `ai_proposed` / etc |
+| changeSummary | text | Reason for new version |
 | createdAt | timestamptz | Auto-set |
 
 ### `campaigns`
-Top-level initiative grouping. Every artifact and session links to a campaign.
+Top-level initiative container.
 
 | Column | Type | Description |
 |---|---|---|
 | id | uuid PK | Auto-generated |
-| name | text | Campaign name. Required. |
-| description | text | What this campaign is trying to achieve |
-| goal | text | Primary measurable goal |
-| channels | text[] | e.g. email, LinkedIn, content, ads |
-| status | text | `planning` \| `active` \| `paused` \| `complete` \| `archived` |
-| priority | text | `high` \| `medium` \| `low` |
-| startDate | date | Optional |
-| endDate | date | Optional |
-| ownerId | uuid FK | Team member responsible |
-| contextVersionId | uuid FK | Context version active when created |
+| name | text | Campaign name |
+| description | text | Optional description |
+| goal | text | Target outcome |
+| channels | text[] | Planned channels |
+| status | text | `planning` / `active` / `paused` / `complete` / `archived` |
+| priority | text | `high` / `medium` / `low` |
+| startDate | timestamptz | Optional |
+| endDate | timestamptz | Optional |
+| ownerId | text | Optional owner |
+| contextVersionId | uuid FK | Context snapshot when created |
+| links | jsonb | Optional label/url pairs |
 | createdAt | timestamptz | Auto-set |
 | updatedAt | timestamptz | Auto-updated |
 
+**Relations now include:** `sessions`, `artifacts`, `performanceLogs`, `researchEntries`, `contentPieces`.
+
 ### `sessions`
-Every AI conversation. Stores full message history plus metadata.
+Saved AI conversations.
 
 | Column | Type | Description |
 |---|---|---|
 | id | uuid PK | Auto-generated |
-| title | text | AI-generated after first exchange. Editable. |
-| mode | text | `strategy` \| `create` \| `feedback` \| `analyze` \| `optimize` |
-| skillsLoaded | text[] | Skill names injected into this session's system prompt |
-| messages | jsonb | Full history: `[{role, content, timestamp}]`. Append-only. |
-| campaignId | uuid FK | Optional. Campaign this session belongs to. |
-| contextVersionId | uuid FK | Context version used in this session |
-| createdBy | uuid FK | Team member who started the session |
+| title | text | User-editable title |
+| mode | text | `strategy` / `create` / `feedback` / `analyze` / `optimize` |
+| skillsLoaded | text[] | Loaded skill names |
+| messages | jsonb | Full conversation history |
+| campaignId | uuid FK | Optional campaign |
+| contextVersionId | uuid FK | Context used |
+| createdBy | text | Actor |
 | createdAt | timestamptz | Auto-set |
-| updatedAt | timestamptz | Auto-updated on each message |
-| isArchived | boolean | Soft delete |
+| updatedAt | timestamptz | Auto-updated |
+| isArchived | bool | Soft archive |
 
 ### `artifacts`
-Every piece of work produced in the app.
+Saved generated work with version chain.
 
 | Column | Type | Description |
 |---|---|---|
 | id | uuid PK | Auto-generated |
-| title | text | Human-readable title. Required. |
-| type | text | `copywriting` \| `email_sequence` \| `cold_email` \| `social_content` \| `launch_strategy` \| `content_strategy` \| `positioning` \| `messaging` \| `ad_creative` \| `competitor_analysis` \| `seo` \| `cro` \| `ab_test` \| `landing_page` \| `one_pager` \| `other` |
-| content | text | Full output content. Markdown. |
-| status | text | `draft` \| `review` \| `approved` \| `live` \| `archived` |
-| skillUsed | text | Which skill framework was loaded |
-| campaignId | uuid FK | Required |
-| sessionId | uuid FK | Session that produced this artifact |
-| contextVersionId | uuid FK | Context version when created |
-| version | integer | Auto-incremented. Supports versioning. |
-| parentArtifactId | uuid FK | Null for v1. Set for revised versions. |
-| tags | text[] | Freeform |
-| createdBy | uuid FK | Team member |
+| title | text | Artifact title |
+| type | text | Artifact type |
+| content | text | Artifact body |
+| status | text | `draft` / `review` / `approved` / `live` / `archived` |
+| skillUsed | text | Optional skill label |
+| campaignId | uuid FK | Required campaign |
+| sessionId | uuid FK | Source session |
+| contextVersionId | uuid FK | Context snapshot |
+| version | int | Version number |
+| parentArtifactId | uuid FK | Parent artifact version |
+| tags | text[] | Optional tags |
+| createdBy | text | Actor |
 | createdAt | timestamptz | Auto-set |
 | updatedAt | timestamptz | Auto-updated |
 
 ### `performance_logs`
-Results per artifact and campaign. The raw material for the learning loop.
+Performance + proposal records.
 
 | Column | Type | Description |
 |---|---|---|
 | id | uuid PK | Auto-generated |
-| artifactId | uuid FK | Nullable if campaign-level entry |
-| campaignId | uuid FK | Required |
-| logType | text | `artifact` \| `campaign` \| `channel` \| `audience_segment` |
-| metrics | jsonb | Freeform key-value: `{opens, replies, clicks, conversions, ...}` |
-| qualitativeNotes | text | What happened. Customer reactions. |
-| whatWorked | text | Explicit summary for the learning loop |
-| whatDidnt | text | Explicit summary for the learning loop |
-| proposedContextUpdates | jsonb | `[{field, current, proposed, rationale}]` |
-| contextUpdateStatus | text | `pending` \| `approved` \| `rejected` \| `na` |
-| recordedBy | uuid FK | Team member |
-| recordedAt | timestamptz | When results were logged |
-| periodStart | date | Start of measurement window |
-| periodEnd | date | End of measurement window |
+| artifactId | uuid FK | Optional artifact |
+| campaignId | uuid FK | Required campaign |
+| logType | text | `artifact` / `campaign` / `context_proposal` / etc |
+| metrics | jsonb | Metric payload |
+| qualitativeNotes | text | Notes |
+| whatWorked | text | Synthesis summary |
+| whatDidnt | text | Synthesis summary |
+| proposedContextUpdates | jsonb | Proposed context edits |
+| contextUpdateStatus | text | `pending` / `approved` / `rejected` / `na` |
+| recordedBy | uuid FK | Team member (or `mcp` for MCP-initiated writes) |
+| recordedAt | timestamptz | Auto-set |
+| periodStart | timestamptz | Optional |
+| periodEnd | timestamptz | Optional |
 
-### `team_members`
-Extends Supabase Auth with GTM-specific fields.
+### `research_entries` (Issue #47)
+Raw customer research records.
 
 | Column | Type | Description |
 |---|---|---|
-| id | uuid PK | Matches Supabase Auth user ID |
+| id | uuid PK | Auto-generated |
+| title | text | Entry title |
+| sourceType | text | call/interview/survey/review/forum/support_ticket/social/common_room/other |
+| contactName | text | Optional |
+| contactCompany | text | Optional |
+| contactSegment | text | Optional |
+| contactStage | text | Optional lifecycle stage |
+| researchDate | timestamptz | Optional source date |
+| rawNotes | text | Raw notes/transcript |
+| summary | text | AI summary |
+| themes | text[] | AI themes |
+| sentiment | text | AI sentiment |
+| productSignal | bool | Product issue flag |
+| productNote | text | Product signal notes |
+| hypothesisSignals | jsonb | Signal map vs active hypotheses |
+| campaignId | uuid FK | Optional campaign |
+| createdBy | text | Actor |
+| createdAt | timestamptz | Auto-set |
+| updatedAt | timestamptz | Auto-updated |
+
+### `research_quotes` (Issue #47)
+Extracted Voice of Customer quotes.
+
+| Column | Type | Description |
+|---|---|---|
+| id | uuid PK | Auto-generated |
+| researchEntryId | uuid FK | Parent entry |
+| quote | text | Verbatim quote |
+| context | text | Optional surrounding context |
+| theme | text | Optional theme |
+| segment | text | Optional segment |
+| isFeatured | bool | Featured quote flag for prompt injection |
+| createdAt | timestamptz | Auto-set |
+
+### `content_pieces` (Issue #49)
+Top-level content object (not an artifact subtype).
+
+| Column | Type | Description |
+|---|---|---|
+| id | uuid PK | Auto-generated |
+| title | text | Content title |
+| slug | text unique | Public slug |
+| contentType | text | blog_post/case_study/landing_page/changelog/newsletter/social_thread/video_script/doc/other |
+| status | text | `draft` / `review` / `approved` / `published` / `archived` |
+| body | text | Markdown body |
+| excerpt | text | Optional excerpt |
+| metaTitle | text | SEO title |
+| metaDescription | text | SEO description |
+| targetKeyword | text | Primary keyword |
+| secondaryKeywords | text[] | Secondary keywords |
+| canonicalUrl | text | Canonical URL |
+| ogTitle | text | OG title |
+| ogDescription | text | OG description |
+| ogImageUrl | text | OG image |
+| twitterCardType | text | Twitter card type |
+| publishedAt | timestamptz | Publish date |
+| campaignId | uuid FK | Optional campaign |
+| parentContentId | uuid FK | Repurpose parent |
+| artifactId | uuid FK | Optional source artifact |
+| contextVersionId | uuid FK | Optional context snapshot |
+| createdBy | text | Actor |
+| createdAt | timestamptz | Auto-set |
+| updatedAt | timestamptz | Auto-updated |
+
+### `content_distributions` (Issue #49)
+Publication/distribution records for each channel.
+
+| Column | Type | Description |
+|---|---|---|
+| id | uuid PK | Auto-generated |
+| contentPieceId | uuid FK | Parent content |
+| channel | text | website/dev_to/hashnode/medium/newsletter/linkedin/twitter/youtube/other |
+| url | text | Channel URL |
+| publishedAt | timestamptz | Channel publish date |
+| status | text | `planned` / `published` / `archived` |
+| notes | text | Optional notes |
+| createdAt | timestamptz | Auto-set |
+
+### `content_metric_snapshots` (Issue #49)
+Time-series content metrics.
+
+| Column | Type | Description |
+|---|---|---|
+| id | uuid PK | Auto-generated |
+| contentPieceId | uuid FK | Parent content |
+| snapshotDate | timestamptz | Snapshot date |
+| pageviews | int | Optional metric |
+| uniqueVisitors | int | Optional metric |
+| avgTimeOnPage | int | Optional metric (seconds) |
+| bounceRate | float | Optional metric |
+| organicClicks | int | Optional metric |
+| impressions | int | Optional metric |
+| avgPosition | float | Optional metric |
+| ctr | float | Optional metric |
+| socialShares | int | Optional metric |
+| backlinks | int | Optional metric |
+| comments | int | Optional metric |
+| signups | int | Optional metric |
+| conversionRate | float | Optional metric |
+| source | text | `manual` / `mcp_pull` / `scheduled_sync` |
+| notes | text | Optional notes |
+| recordedBy | text | Actor |
+| createdAt | timestamptz | Auto-set |
+
+### `team_members`
+Supabase-auth-linked member table.
+
+| Column | Type | Description |
+|---|---|---|
+| id | text PK | Supabase user ID |
 | name | text | Display name |
-| email | text | Work email |
-| role | text | `admin` \| `member` \| `viewer` |
+| email | text unique | Email |
+| role | text | `admin` / `member` / `viewer` |
 | createdAt | timestamptz | Auto-set |
 
 ---
 
 ## Feature specifications
 
-### 4.1 — Marketing context editor
+### 4.1 Marketing context
 
-The foundation. A structured editor for the product marketing context, version-controlled, team-editable.
+- Structured context fields with version history
+- Manual edits and AI-proposed updates
+- Proposal review flow before apply
+- Restore previous context versions
+- Active version auto-injected into every session
 
-| Feature | Description | Priority |
+### 4.2 AI session modes
+
+| Mode | Purpose | Skills |
 |---|---|---|
-| Structured fields | Each section (positioning, ICP, messaging, competitors, etc.) is a distinct field with its own edit UI. Not a freeform text blob. | P0 |
-| Version history | Every save creates a new version. Full history visible. One-click restore. Change summary required on each save. | P0 |
-| Active/draft states | Draft edits before committing. Active version is what every AI session reads. | P0 |
-| AI-proposed updates | After a feedback session, AI generates proposed context updates. Each proposal shows current vs proposed with rationale. Approve / reject / modify. | P0 |
-| AI review mode | Before saving, AI reviews changes for internal consistency and flags potential mismatches. | P1 |
-| Change log | Timeline of all context changes: what changed, who changed it, source, triggering session. | P1 |
-| Context completeness score | Visual indicator of which sections are populated vs empty/hypothesis. | P1 |
-| Export | Export current context version as Markdown or push to a connected Notion workspace. | P2 |
+| Strategy | Positioning, GTM, messaging decisions | `product-marketing-context`, `marketing-psychology`, `marketing-ideas`, `launch-strategy`, `competitor-alternatives` |
+| Create | Produce marketing assets | Skill mapping by artifact type |
+| Feedback | Synthesize raw notes/metrics | `customer-research` |
+| Analyze | Analyze results and trends | `analytics-tracking`, `ab-test-setup` |
+| Optimize | CRO and iteration work | `page-cro`, `copy-editing`, `ab-test-setup`, `signup-flow-cro`, `onboarding-cro` |
+
+Prompt assembly order remains:
+1. Role definition
+2. Product context
+3. Skill frameworks
+4. Performance history (create mode)
+5. Featured customer quotes (create + strategy)
+6. Published content context (create + strategy)
+7. Mode instructions
+8. Output instructions
+
+### 4.3 Artifact library
+
+- Status workflow: Draft -> Review -> Approved -> Live -> Archived
+- Version chain via parent/child artifact links
+- Campaign links and performance links
+- Close-the-loop reminder creation when moved to `live`
+
+### 4.4 Campaigns
+
+- Campaign CRUD with status and priority
+- Campaign-level linking to sessions, artifacts, research entries, and content pieces
+- Aggregated performance rollups and dashboard summaries
+
+### 4.5 Performance log
+
+- Manual log entry with metrics + qualitative notes
+- AI synthesis path for what worked/what did not
+- Proposal lifecycle (`pending`, `approved`, `rejected`)
+- Close-the-loop queue surfaced on dashboard and MCP
+
+### 4.6 Dashboard
+
+- Active campaigns summary
+- Recent sessions and artifacts
+- Pending proposal counts
+- Close-the-loop queue
+
+### 4.7 Team and settings
+
+- Team invites and role management
+- Skills pinned-version management
+- Theme toggle (light/dark)
+- Sharing secret and workspace settings
 
 ---
 
-### 4.2 — AI session modes
+## Content layer (Issue #49)
 
-Five explicit modes. Each loads a specific set of skill frameworks automatically. Mode is selected before the conversation starts.
+### Data model
 
-#### Mode: Strategy
-For positioning work, GTM planning, ICP development, messaging architecture, launch planning.
+Implemented with:
+- `ContentPiece`
+- `ContentDistribution`
+- `ContentMetricSnapshot`
 
-- **Skills loaded:** `vbf-messaging`, `marketing-psychology`, `marketing-ideas`, `launch-strategy`, `competitor-alternatives`
-- Full marketing context injected as system prompt
-- Competitive landscape summary included automatically
-- AI outputs include: which framework informed the recommendation, what context was applied
-- Strategic outputs are promptable as artifacts
+### Product behavior
 
-#### Mode: Create
-For writing and producing marketing assets. Declare artifact type at session start — skill loads automatically.
+- Library view tabs: All, Calendar, Drafts
+- New content form sections: Content, SEO, OG/Social
+- Detail page tabs: Preview, Edit, SEO, OG
+- Distribution tracking per channel
+- Repurposed content links via `parentContentId`
+- Metric snapshots with sparkline and snapshot history
 
-- **Skills loaded:** determined by artifact type (see skill routing table)
-- Full context injected: positioning, ICP, messaging pillars, voice guidelines, words to avoid
-- Historical artifact pull: similar past artifacts surfaced with performance data
-- Every output has one-click "Save as artifact" with auto-populated metadata
-- Revision sessions: load an existing artifact to continue refining it
+### Public API (website pull mechanism)
 
-#### Mode: Feedback
-For ingesting results, customer reactions, call notes, and campaign data.
+- `GET /api/public/content/[slug]`
+- `GET /api/public/content`
 
-- **Skills loaded:** `customer-research`
-- Paste in raw input: metrics, call transcripts, customer quotes, data exports
-- AI synthesizes: what worked, what didn't, what surprised, what to do differently
-- Generates proposed context updates — each proposal is a discrete reviewable item
-- Links synthesized feedback to relevant artifacts and campaigns
-- Creates a performance log entry automatically
+Notes:
+- Public endpoints return published content only.
+- Endpoints are unauthenticated and rate-limited (in-memory limiter, per instance).
 
-#### Mode: Analyze
-For data and performance work. Number crunching, trend analysis, channel comparisons.
+### Prompt injection
 
-- **Skills loaded:** `analytics-tracking`, `ab-test-setup`
-- Paste in data or pull from performance log directly
-- AI interprets against your context: what these numbers mean for your specific ICP
-- Trend view: AI compares current period to prior periods from your performance log
+Published content summaries are injected into Strategy and Create system prompts as `<published_content>` context.
 
-#### Mode: Optimize
-For CRO, copy review, A/B test design, and improving existing assets.
+### MCP tools
 
-- **Skills loaded:** `page-cro`, `copy-editing`, `ab-test-setup`, `signup-flow-cro`, `onboarding-cro`
-- Load an existing artifact or paste in content from outside the app
-- AI critique uses your actual positioning and ICP — not generic CRO advice
-- Produces: annotated critique + revised version as separate linked artifacts
-
-#### Session features (all modes)
-
-| Feature | Description | Priority |
-|---|---|---|
-| Persistent sessions | Saved, resumable, searchable by keyword/mode/campaign/date | P0 |
-| Context injection | Active context version injected as system prompt. Collapsible panel in UI shows what AI is using. | P0 |
-| Artifact save | Any AI output saveable as artifact. One click. Pre-populates title, type, campaign. | P0 |
-| Campaign link | Sessions linkable to a campaign at start or mid-session | P0 |
-| Session title | AI-generated after first exchange. Editable. | P0 |
-| Skills panel | Shows which skill files were loaded. Expandable to full content. | P1 |
-| Related artifacts | Sidebar shows existing artifacts in same campaign | P1 |
-| AI output metadata | Each response tagged with: skill used, what context informed it | P1 |
-| Share session | Read-only link for sharing outside the team | P2 |
+- `list_content`
+- `get_content`
+- `save_content`
+- `update_content`
+- `add_distribution`
+- `log_content_metrics`
+- `get_content_metrics`
+- `get_content_calendar`
 
 ---
 
-### 4.3 — Artifact library
+## Customer research layer (Issue #47)
 
-The complete record of everything produced.
+### Data model
 
-| Feature | Description | Priority |
-|---|---|---|
-| Library view | Filterable by type, campaign, status, date, tag. Card layout with performance signal. | P0 |
-| Artifact detail | Full content view. Metadata sidebar: type, campaign, session, context version, skill used, version history, performance log. | P0 |
-| Status workflow | Draft → Review → Approved → Live → Archived. Changes logged with timestamp and team member. | P0 |
-| Search | Full-text search across title and content. All filter dimensions. | P0 |
-| Export | Markdown, plain text, or copy to clipboard | P0 |
-| Performance signal | Library card shows: no data \| logging \| strong \| weak | P1 |
-| Close the loop | When artifact moves to Live, reminder created: "Log results in 2 weeks." | P1 |
-| Version history | Full version history per artifact. Diff view. | P1 |
-| Duplicate | Clone artifact as new draft | P1 |
-| Related artifacts | Artifacts in same campaign shown in sidebar | P1 |
-| Bulk actions | Bulk status change, campaign reassign, tag | P2 |
+Implemented with:
+- `ResearchEntry`
+- `ResearchQuote`
 
----
+### Product behavior
 
-### 4.4 — Campaign tracker
+- Research page has Entries and Quotes tabs
+- New entry form captures source metadata + raw notes
+- Entry detail surfaces AI summary, themes, sentiment, hypothesis signals, and extracted quotes
+- VoC quote library supports `isFeatured` starring
+- Featured quotes are injected into Create and Strategy prompts
+- Hypothesis signals are tracked per entry against active hypotheses
+- "Push to Linear" flow is clipboard payload generation in UI and MCP tooling, not direct Linear API writes
 
-Lightweight campaign management.
+### AI processing
 
-| Feature | Description | Priority |
-|---|---|---|
-| Campaign list | Board/list toggle. Status columns: Planning, Active, Paused, Complete. Card shows name, goal, status, owner, artifact count, performance signal. | P0 |
-| Campaign detail | Goal, channels, dates, owner, linked sessions (with mode badges), linked artifacts, performance log entries, performance summary. | P0 |
-| Create campaign | Name, description, goal, channels, dates, owner. Quick create from dashboard. | P0 |
-| Archive | Archived campaigns still searchable, still inform AI context. | P0 |
-| Campaign brief AI assist | AI-assisted brief generator: input goal, get suggested channels and success metrics informed by past campaign performance. | P1 |
-| Progress view | Timeline of sessions and artifacts within the campaign | P1 |
-| Performance summary | Aggregated performance from all linked artifacts with AI narrative. | P1 |
+`lib/ai/research.ts` runs asynchronously after entry save.
 
----
+Processing pipeline:
+- Summarize entry
+- Extract themes
+- Infer sentiment
+- Build hypothesis signals
+- Extract quotes
+- Generate context proposals when supported
 
-### 4.5 — Performance log
+### MCP tools
 
-The results layer. The raw material for the learning loop.
-
-| Feature | Description | Priority |
-|---|---|---|
-| Log entry UI | Fast form: which artifact or campaign, metric fields (freeform key-value), qualitative notes, what worked, what didn't. | P0 |
-| AI synthesis | After save, AI synthesizes: proposed context updates, patterns matching past entries, what this changes about recommendations. | P0 |
-| Context update proposals | AI-generated proposed edits to context doc. Each proposal: field, current value, proposed value, rationale. Approve / reject / modify. | P0 |
-| Log history | Timeline of all performance entries. Filterable by artifact, campaign, date, who logged it. | P0 |
-| Reminder system | When artifact goes Live, auto-create "close the loop" reminder. Visible on dashboard queue. | P1 |
-| Pattern report | Monthly AI-generated report: what's working, what isn't, what to shift. Displayed on dashboard. | P1 |
-| Export | Performance log as CSV | P2 |
+- `list_research_entries`
+- `get_research_entry`
+- `save_research_entry`
+- `list_quotes`
+- `get_linear_payload`
 
 ---
 
-### 4.6 — Dashboard
+## MCP server (Issue #26)
 
-The first screen. Designed for daily use.
+Quiver exposes tool access over two transports:
+- Local stdio server in `mcp/`
+- Remote Streamable HTTP endpoint at `/api/mcp`
 
-| Feature | Description | Priority |
-|---|---|---|
-| Quick start | Prominent "New session" with mode selector. Campaign selector. | P0 |
-| Active campaigns | Cards for all active campaigns. Status, last activity, pending reminders. | P0 |
-| Recent sessions | Last 5 sessions with mode badge, title, campaign link. Resume button. | P0 |
-| Recent artifacts | Last 5 artifacts with type badge and status. | P0 |
-| Close the loop queue | Artifacts with pending result reminders. Overdue flagged. One-click to log entry. | P1 |
-| Context status | Current context version. Last updated. Completeness score. Pending AI proposals count. | P1 |
-| Pattern signal | Top 2–3 current insights from pattern report if available. | P1 |
+### Primary use case
 
----
+A fully configured Claude instance (memory, other connected MCP servers, and team context) can write to and read from Quiver directly while Quiver remains the system of record.
 
-### 4.7 — Team and settings
+### Tool domains
 
-| Feature | Description | Priority |
-|---|---|---|
-| Team invites | Invite by email. Role selection: admin, member, viewer. | P0 |
-| API key management | Anthropic API key set by admin. Stored in environment, not in DB. | P0 |
-| Skills management | View pinned skills version. Admin can trigger manual update to latest. Shows last updated date per skill. | P1 |
-| Notification preferences | Email or in-app: close-the-loop reminders, context update proposals, session shares. | P2 |
-| Context backup | Manual export of full context history as JSON. Restore from backup. | P2 |
+Context:
+- `get_context`
+- `get_context_history`
+- `propose_context_update`
+- `apply_context_update`
+- `restore_context_version`
 
----
+Campaigns:
+- `list_campaigns`
+- `get_campaign`
+- `create_campaign`
+- `update_campaign`
+- `update_campaign_status`
 
-## Skill routing
+Artifacts:
+- `list_artifacts`
+- `get_artifact`
+- `save_artifact`
+- `update_artifact`
+- `update_artifact_status`
 
-### Phase 1: Explicit mode selection
+Performance:
+- `log_performance`
+- `get_performance_log`
+- `get_close_the_loop_queue`
+- `list_proposals`
+- `action_proposal`
 
-User selects mode before starting a session. App loads the corresponding skills.
+Content:
+- `list_content`
+- `get_content`
+- `save_content`
+- `update_content`
+- `add_distribution`
+- `log_content_metrics`
+- `get_content_metrics`
+- `get_content_calendar`
 
-| Mode | Skills loaded | Additional context injected |
-|---|---|---|
-| strategy | `vbf-messaging`, `marketing-psychology`, `marketing-ideas`, `launch-strategy`, `competitor-alternatives` | Full context + competitive landscape + active campaigns |
-| create | Determined by artifact type at session start | Full context + ICP stack rank + messaging pillars + voice guidelines + similar past artifacts with performance data |
-| feedback | `customer-research` | Full context + past feedback entries + active hypotheses |
-| analyze | `analytics-tracking`, `ab-test-setup` | Full context + performance log summary for relevant campaign |
-| optimize | `page-cro`, `copy-editing`, `ab-test-setup`, `signup-flow-cro`, `onboarding-cro` | Full context + target artifact (if loaded) + performance history for artifact type |
+Research:
+- `list_research_entries`
+- `get_research_entry`
+- `save_research_entry`
+- `list_quotes`
+- `get_linear_payload`
 
-**Artifact type → skill mapping (create mode):**
+Sessions:
+- `list_sessions`
+- `get_session`
 
-| Artifact type | Skill |
-|---|---|
-| copywriting | `copywriting` |
-| email_sequence | `email-sequence` |
-| cold_email | `cold-email` |
-| social_content | `social-content` |
-| ad_creative | `ad-creative` |
-| landing_page | `copywriting` + `page-cro` |
-| one_pager | `sales-enablement` |
-| positioning | `vbf-messaging` |
-| messaging | `vbf-messaging` |
-| content_strategy | `content-strategy` |
-| ab_test | `ab-test-setup` |
-| all others | `copywriting` |
+Workspace:
+- `get_dashboard_summary`
 
-### Phase 2: Intent detection (future — not in initial build)
+### `propose_context_update` vs `apply_context_update`
 
-After 6–8 weeks of real usage, intent detection can be layered on. User describes what they want, app detects mode and artifact type, pre-selects for confirmation. Phase 1 mode selection remains available as permanent override. Explicitly out of scope for v1.
+- `propose_context_update`: creates a pending proposal record in `performance_logs`; does not modify active context.
+- `apply_context_update`: applies changes immediately by calling `applyContextUpdates()` and creating a new active context version.
 
-### System prompt assembly order
+### Setup summary
 
-Every session system prompt is assembled in this exact order:
+Stdio server:
+```bash
+cd mcp
+npm install
+npx prisma generate
+npm run build
+```
 
-1. **Role definition** — "You are an expert B2B marketing strategist working inside Quiver for [product name]..."
-2. **Product context** — Full active `context_version` row, formatted by section
-3. **Skill frameworks** — Relevant SKILL.md files injected in full, each with a section header
-4. **Performance history** — 5 most recent artifacts of same type with performance signals (create mode)
-5. **Session mode instructions** — Mode-specific output format and behavior guidance
-6. **Output format instructions** — `[ARTIFACT READY — type: {type} | suggested title: {title}]` marker instructions
+Claude Desktop / Cursor use the built `mcp/dist/index.js` command.
 
----
-
-## The three feedback loops
-
-### Loop 1 — Manual feedback, automated synthesis (launch)
-
-Team member pastes in results after something goes live. App does the synthesis work, proposes context updates, logs performance. Systematic improvement even with manual input.
-
-- Input: metrics paste, call notes, customer quotes, data exports
-- Output: synthesized summary, performance log entry, context update proposals
-- Review step: team approves/rejects each proposed context change before it applies
-
-### Loop 2 — Close the loop reminder system (launch)
-
-Prevents the failure mode of launching something and never recording what happened.
-
-- Trigger: artifact status changes to Live
-- System creates a reminder: "Log results for [artifact] — due [2 weeks from live date]"
-- Appears on dashboard close-the-loop queue
-- Overdue reminders escalate visibility
-- One-click from reminder to pre-populated log entry form
-
-### Loop 3 — Pattern detection and monthly synthesis (Phase 2)
-
-Once enough performance data exists (estimate: 3+ months of consistent logging).
-
-- Scheduled monthly job: AI analyzes all performance log entries from past 30 days
-- Output: pattern report artifact — what's working, what isn't, emerging signals
-- Includes proposed updates to context doc based on consistent patterns
-- All proposals reviewed and approved by team before context changes
-- Displayed on dashboard as "Monthly insights" callout
+Remote HTTP connector uses deployed endpoint:
+- `https://<your-domain>/api/mcp`
+- Optional `MCP_AUTH_SECRET` Bearer token for auth.
 
 ---
 
-## Onboarding flow
+## Scheduled sync strategy (Issue #39, reframed)
 
-New deployments are gated behind a 6-step onboarding wizard on first run. Triggered when no active `context_version` row exists. All routes redirect to `/setup` until complete.
+MCP-first remains the primary path for external metric pulls.
 
-Each step uses AI-assisted input: user provides rough notes, AI structures and refines using the `product-marketing-context` skill framework.
+- Teams can ask an MCP-capable client to pull data from connected services and log into Quiver in the same workflow.
+- Scheduled sync remains Phase 3 and is intended for teams needing fully automatic pulls.
+- Current plan narrows scheduled sync to PostHog first.
 
-| Step | Fields | AI assist |
-|---|---|---|
-| 1 — Product basics | Name, one-liner, product category, business model | Drafts a refined one-liner from rough input |
-| 2 — Target audience | ICP definition, decision-maker, primary use case, jobs to be done | Structures freeform input into clean ICP definition |
-| 3 — Positioning | Core problem, why alternatives fall short, key differentiators | Drafts a positioning statement from inputs |
-| 4 — Messaging | Value pillars (freeform), customer language (paste verbatims), words to use/avoid | Structures into VBF messaging pillars |
-| 5 — Competitive landscape | Up to 5 competitors with name + positioning notes. "We don't know much yet" is fine. | None — just structured input |
-| 6 — Team setup | Confirm admin account, invite teammates by email (optional) | None |
+---
 
-Step progress is saved to localStorage so a browser refresh doesn't lose work. The step 6 submission creates the first `context_version` row marked `isActive: true` in a single transaction. App unlocks immediately after.
+## Dark mode (Issue #45)
+
+Implemented.
+
+- User-selectable light/dark mode
+- `localStorage` key: `quiver-theme`
+- Tailwind config uses class mode (`darkMode: ['class']`)
+- Inline script in `app/layout.tsx` runs before hydration to avoid flash of incorrect theme
+- `ThemeToggle` appears in app shell header
+
+---
+
+## Tabstack content import (Issue #50)
+
+Status in this checkout: **issued but not implemented yet**.
+
+Planned design:
+- Optional `TABSTACK_API_KEY` env var
+- Shared client wrapper `lib/tabstack.ts`
+- `POST /api/content/import` using Tabstack `/extract/json`
+- Import modal in content library
+- Graceful degradation when key is absent
+
+Until implemented, docs should treat this as planned scope and not shipped behavior.
 
 ---
 
 ## Navigation and UX principles
 
-### Primary navigation (six items)
+### Core workspace navigation (8 primary work areas)
 
-- **Dashboard** — home, quick start, active campaigns, queues
-- **Sessions** — all sessions, new session, resume
-- **Artifacts** — library, search, filter
-- **Campaigns** — board/list, campaign detail
-- **Context** — editor, version history, proposed updates
-- **Performance** — log entries, pattern report
+- Dashboard
+- Sessions
+- Artifacts
+- Campaigns
+- Content
+- Research
+- Context
+- Performance
+
+Docs/help route may exist as an additional navigation item, but these eight remain the core work areas.
 
 ### UX principles
 
-- **Speed to session** — starting a new session takes under 5 seconds from any page
-- **Context always visible** — persistent header element shows active context version. Collapsible panel in sessions shows exactly what the AI is working from.
-- **Artifacts are first-class** — every AI output with value is saveable in one click. Save pre-populates everything it can infer.
-- **Performance linked everywhere** — from an artifact, see its performance. From a campaign, see all artifact performance. No dead ends.
-- **No orphans** — every session and artifact belongs to a campaign. If created without linking, default campaign is "Unassigned" — visible but clearly needs a home.
-- **Team transparency** — all sessions, artifacts, and campaigns are visible to the whole team by default. No private work silos.
+- Fast path to new session
+- Context always visible and versioned
+- Every output can connect back to campaign and performance
+- No orphans: work belongs to campaign scope (`Unassigned` fallback when needed)
+- Team-visible by default inside one deployment workspace
 
 ---
 
 ## Build order
 
-Build in this sequence. Do not jump ahead. Each phase depends on the previous.
+Build and validation order by dependency:
 
-| Phase | Deliverable | Why this order |
+| Phase | Deliverable | Notes / dependencies |
 |---|---|---|
-| 1 | Database schema + Supabase setup | Foundation for everything. All 6 tables, RLS policies. No seed data — onboarding produces it. |
-| 2 | Auth + team access | Supabase Auth. Login, invite flow, three roles. Must exist before any shared data. |
-| 3 | Onboarding flow | 6-step wizard. Produces the first `context_version` row. App is gated until complete. |
-| 4 | Context editor (P0) | Structured fields, version save, change log. Must exist before sessions can work. |
-| 5 | AI sessions (all 5 modes) | Core product. Context injection, skill loading, streaming, session save/resume, artifact save. |
-| 6 | Campaign tracker (P0) | Campaign CRUD, status, link sessions and artifacts. |
-| 7 | Artifact library (P0) | Library view, detail, status workflow, search, export. Requires campaigns. |
-| 8 | Performance log + feedback loop | Log entry, AI synthesis, context update proposals, close-the-loop reminders. Requires real artifacts. |
-| 9 | Dashboard + P1 features | Dashboard queues, context status, recent activity. P1 features from each section. |
-| 10 | Intent detection (Phase 2) | After 6–8 weeks of real usage. Explicit mode selection remains as permanent override. |
+| 1 | Foundation: schema, auth, onboarding, context | Base product layers |
+| 2 | Sessions + artifacts + campaigns + performance loop | Core workflow |
+| 3 | MCP server (Issue #26) | Tooling access for external clients |
+| 4 | Dark mode (Issue #45) | UX improvement, no schema impact |
+| 5 | Research layer (Issue #47) | Depends on campaigns/context/performance |
+| 6 | Content layer (Issue #49) | Depends on campaigns/context + public API |
+| 7 | Tabstack import (Issue #50) | Optional add-on to content workflow |
+| 8 | Scheduled sync (Issue #39, Phase 3) | Defer until MCP-first workflow proven in production |
 
 ---
 
 ## Deploy story
 
-### Self-hosted on Vercel (recommended)
+### Self-hosted on Vercel
 
-```
-1. Fork github.com/tessak22/quiver
-2. Create a Supabase project — copy DATABASE_URL and keys
-3. Create an Anthropic API key
-4. Deploy to Vercel — connect forked repo, add env vars
-5. Visit your deployment URL — onboarding wizard launches on first run
-6. Complete onboarding, invite your team
-```
+1. Fork repository
+2. Create Supabase project
+3. Create Anthropic API key
+4. Configure env vars in Vercel
+5. Run migrations
+6. Complete onboarding
 
 ### Environment variables
 
 ```env
 # Database
-DATABASE_URL=            # Postgres connection string (Supabase recommended)
-DIRECT_URL=              # Direct connection URL for Prisma migrations
+DATABASE_URL=
+DIRECT_URL=
 
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
@@ -505,59 +630,43 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
 # Anthropic
-ANTHROPIC_API_KEY=       # Your Anthropic API key — used for all AI sessions
+ANTHROPIC_API_KEY=
 
 # App
-NEXTAUTH_SECRET=         # Random string for session encryption
-NEXT_PUBLIC_APP_URL=     # Your deployment URL (e.g. https://quiver.yourteam.com)
-```
+NEXT_PUBLIC_APP_URL=
+QUIVER_SHARE_SECRET=
 
-Each team deploys their own isolated instance. There is no shared infrastructure between deployments. A second team forks the repo, deploys their own instance with their own Supabase project and Anthropic key, completes their own onboarding — their data never touches anyone else's.
+# Optional MCP HTTP auth
+MCP_AUTH_SECRET=
+
+# Optional planned content import (Issue #50, not yet implemented in this checkout)
+TABSTACK_API_KEY=
+```
 
 ---
 
 ## Out of scope
 
-Intentionally excluded to keep the build focused:
-
-- **Multi-tenant SaaS hosting** — each team runs their own instance
-- **Direct API integrations for performance data** (PostHog, Common Room, HubSpot) — manual entry in v1, integrations are Phase 3
-- **Email sending or campaign execution** — creation and tracking tool only, not an execution layer
-- **Public-facing pages or external client access** — team-only
-- **Intent detection for mode selection** — Phase 2 explicitly, after usage validation
-- **Mobile app** — web only
-- **Billing or usage metering** — self-hosted, teams bring their own API keys
+- Multi-tenant hosted SaaS model
+- Built-in outbound campaign execution/send infrastructure
+- Mobile-native app
+- Scheduled sync before MCP-first workflow is validated
+- Broad direct integrations as the primary path (MCP-first is primary; scheduled sync is selective and later)
 
 ---
 
-## Open questions
+## Success criteria
 
-Decisions needed before build starts:
+A team should be able to:
 
-| # | Question | Recommendation |
-|---|---|---|
-| 1 | Skills repo strategy: pin a commit inside the project, or fetch from GitHub at runtime? | Pin at a specific commit. Admin-triggered manual update flow to pull latest. Stable by default. |
-| 2 | Is Quiver the source of truth for product marketing context, replacing existing Notion docs? | Yes. Quiver owns it. Notion export is a push not a pull. One source of truth. |
-| 3 | License: MIT or Apache 2.0? | MIT. Simpler, more permissive, appropriate for a marketing tool with no novel IP. |
-| 4 | Who are the first two teams deploying? Names and team sizes? | Informs onboarding copy and how aggressively to test multi-invite flows before launch. |
-| 5 | DATABASE_URL: Supabase required, or support any Postgres via env var? | Any Postgres via env var. Supabase is the recommended default in docs but not enforced in code. |
-
----
-
-## What success looks like
-
-When Quiver is done, a product team should be able to:
-
-1. Fork the repo, add env vars, deploy to Vercel, and have a working marketing command center in under 30 minutes
-2. Complete the onboarding wizard and have a structured, AI-ready product marketing context in under 20 minutes
-3. Start a Strategy session and receive recommendations specifically grounded in their product's positioning and ICP — not generic marketing advice
-4. Save an artifact from any session in one click with pre-populated metadata
-5. Log performance results and see AI-proposed updates to their product context
-6. Invite teammates and have them immediately working in the same shared context
-7. Read the README and understand exactly how to deploy, contribute, or improve the skills
-
-That is the bar.
+1. Deploy in under 30 minutes
+2. Complete onboarding and start sessions quickly
+3. Generate grounded outputs using real context
+4. Save artifacts/content and link work to campaigns
+5. Log research and performance, then review context proposals
+6. Use MCP clients to interact with Quiver data directly
+7. Operate with clear version history and shared team visibility
 
 ---
 
-*Quiver — github.com/tessak22/quiver — MIT License*
+*Quiver - github.com/tessak22/quiver - MIT License*
