@@ -321,7 +321,7 @@ export function registerPerformanceTools(server: McpServer) {
                 typeof item === 'object' &&
                 item !== null &&
                 typeof (item as Record<string, unknown>).field === 'string' &&
-                CONTEXT_FIELDS.has((item as Record<string, unknown>).field as string) &&
+                (CONTEXT_FIELDS as Set<string>).has((item as Record<string, unknown>).field as string) &&
                 'proposed' in (item as Record<string, unknown>)
             );
 
