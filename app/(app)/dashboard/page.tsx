@@ -1,6 +1,3 @@
-'use client';
-
-import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +7,7 @@ import type {
   ArtifactType,
   ArtifactStatus,
 } from '@/types';
+import { loadDashboardData } from '@/lib/db/dashboard';
 
 // ---------------------------------------------------------------------------
 // Types — mirror API response shapes
@@ -20,7 +18,7 @@ interface CampaignRecord {
   name: string;
   goal: string | null;
   status: string;
-  updatedAt: string;
+  updatedAt: Date | string;
   _count: {
     sessions: number;
     artifacts: number;
@@ -32,8 +30,8 @@ interface SessionRecord {
   id: string;
   title: string | null;
   mode: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
   campaign: { id: string; name: string } | null;
 }
 
@@ -42,15 +40,15 @@ interface ArtifactRecord {
   title: string;
   type: string;
   status: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
   campaign: { id: string; name: string } | null;
 }
 
 interface ReminderRecord {
   id: string;
   qualitativeNotes: string | null;
-  recordedAt: string;
+  recordedAt: Date | string;
   artifact: {
     id: string;
     title: string;
@@ -63,11 +61,7 @@ interface ReminderRecord {
 interface ContextRecord {
   id: string;
   version: number;
-  createdAt: string;
-}
-
-interface ProposalLogRecord {
-  id: string;
+  createdAt: Date | string;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,12 +142,12 @@ const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 });
 
-function formatDate(dateStr: string): string {
-  return dateFormatter.format(new Date(dateStr));
+function formatDate(dateValue: Date | string): string {
+  return dateFormatter.format(new Date(dateValue));
 }
 
-function formatShortDate(dateStr: string): string {
-  return shortDateFormatter.format(new Date(dateStr));
+function formatShortDate(dateValue: Date | string): string {
+  return shortDateFormatter.format(new Date(dateValue));
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +161,7 @@ interface DashboardData {
   reminders: ReminderRecord[];
   context: ContextRecord | null;
   pendingProposals: number;
+  loadIssues: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +408,7 @@ function CloseTheLoopBlock({
   const threeDaysFromNow = new Date();
   threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
 
-  function getUrgencyIndicator(recordedAt: string): {
+  function getUrgencyIndicator(recordedAt: Date | string): {
     className: string;
     label: string;
   } {
@@ -569,113 +564,21 @@ function ContextStatusBlock({
   );
 }
 
+function DashboardLoadWarning({ issues }: { issues: string[] }) {
+  if (issues.length === 0) return null;
+
+  return (
+    <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+      Some dashboard data could not be loaded. Reload the page to try again.
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
-export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData>({
-    campaigns: [],
-    sessions: [],
-    artifacts: [],
-    reminders: [],
-    context: null,
-    pendingProposals: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchDashboardData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const [
-        campaignsRes,
-        sessionsRes,
-        artifactsRes,
-        remindersRes,
-        contextRes,
-        proposalsRes,
-      ] = await Promise.all([
-        fetch('/api/campaigns?status=active'),
-        fetch('/api/sessions'),
-        fetch('/api/artifacts'),
-        fetch('/api/performance/reminders'),
-        fetch('/api/context'),
-        fetch('/api/context/proposals'),
-      ]);
-
-      // Parse campaigns
-      const campaignsData: { campaigns: CampaignRecord[] } = campaignsRes.ok
-        ? await campaignsRes.json()
-        : { campaigns: [] };
-
-      // Parse sessions — take latest 5
-      const sessionsData: { sessions: SessionRecord[] } = sessionsRes.ok
-        ? await sessionsRes.json()
-        : { sessions: [] };
-
-      // Parse artifacts — take latest 5
-      const artifactsData: { artifacts: ArtifactRecord[] } = artifactsRes.ok
-        ? await artifactsRes.json()
-        : { artifacts: [] };
-
-      // Parse reminders
-      const remindersData: { reminders: ReminderRecord[] } = remindersRes.ok
-        ? await remindersRes.json()
-        : { reminders: [] };
-
-      // Parse context — may 404 if not set up
-      const contextData: { context: ContextRecord } | { error: string } =
-        contextRes.ok
-          ? await contextRes.json()
-          : { error: 'No context' };
-
-      // Parse proposals
-      const proposalsData: { proposals: ProposalLogRecord[] } =
-        proposalsRes.ok
-          ? await proposalsRes.json()
-          : { proposals: [] };
-
-      setData({
-        campaigns: campaignsData.campaigns,
-        sessions: sessionsData.sessions.slice(0, 5),
-        artifacts: artifactsData.artifacts.slice(0, 5),
-        reminders: remindersData.reminders,
-        context:
-          'context' in contextData ? contextData.context : null,
-        pendingProposals: proposalsData.proposals.length,
-      });
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to load dashboard data'
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
-  if (loading) {
-    return (
-      <div className="space-y-6 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Your marketing command center.
-          </p>
-        </div>
-        <div className="flex items-center justify-center min-h-[300px]">
-          <p className="text-muted-foreground">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
+function DashboardPageContent({ data }: { data: DashboardData }) {
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
@@ -686,19 +589,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-          <button
-            type="button"
-            className="ml-2 underline"
-            onClick={() => setError(null)}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
+      <DashboardLoadWarning issues={data.loadIssues} />
 
       {/* Quick Start — full width */}
       <QuickStartBlock />
@@ -718,4 +609,29 @@ export default function DashboardPage() {
       />
     </div>
   );
+}
+
+export default async function DashboardPage() {
+  try {
+    const data = await loadDashboardData();
+    return <DashboardPageContent data={data} />;
+  } catch (err) {
+    console.error('[dashboard] Failed to render dashboard', { error: err });
+    return (
+      <div className="space-y-6 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Your marketing command center.
+          </p>
+        </div>
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load dashboard data.
+        </div>
+        <Link href="/dashboard">
+          <Button variant="outline">Reload dashboard</Button>
+        </Link>
+      </div>
+    );
+  }
 }

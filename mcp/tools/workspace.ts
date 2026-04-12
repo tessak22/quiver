@@ -1,8 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { prisma } from '@/lib/db';
 import { getActiveContext } from '@/lib/db/context';
+import { countCampaignsByStatus } from '@/lib/db/campaigns';
 import { getPendingProposals } from '@/lib/db/performance';
-import { getReminders } from '@/lib/db/artifacts';
+import { getReminders, getRecentArtifacts } from '@/lib/db/artifacts';
+import { getRecentSessions } from '@/lib/db/sessions';
 import { text, error } from '../lib/response.js';
 
 export function registerWorkspaceTools(server: McpServer) {
@@ -23,20 +24,11 @@ export function registerWorkspaceTools(server: McpServer) {
           artifactsResult,
         ] = await Promise.allSettled([
           getActiveContext(),
-          prisma.campaign.count({ where: { status: 'active' } }),
+          countCampaignsByStatus('active'),
           getPendingProposals(),
           getReminders(),
-          prisma.session.findMany({
-            where: { isArchived: false },
-            orderBy: { updatedAt: 'desc' },
-            take: 5,
-            select: { title: true, mode: true, updatedAt: true },
-          }),
-          prisma.artifact.findMany({
-            orderBy: { updatedAt: 'desc' },
-            take: 5,
-            select: { title: true, type: true, status: true },
-          }),
+          getRecentSessions(),
+          getRecentArtifacts(),
         ]);
 
         const context = contextResult.status === 'fulfilled' ? contextResult.value : null;

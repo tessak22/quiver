@@ -1,6 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { prisma } from '@/lib/db';
 import {
   createContentPiece,
   updateContentPiece,
@@ -12,6 +11,8 @@ import {
   getMetricSnapshots,
   generateSlug,
   getContentPerformanceSignal,
+  findContentPiecesByTitle,
+  getContentPiecesForCalendar,
 } from '@/lib/db/content';
 import { getActiveContext } from '@/lib/db/context';
 import { text, error } from '../lib/response.js';
@@ -34,12 +35,7 @@ async function resolveContentPiece(
   }
 
   if (titlePartial) {
-    const matches = await prisma.contentPiece.findMany({
-      where: { title: { contains: titlePartial, mode: 'insensitive' } },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: { id: true, title: true },
-    });
+    const matches = await findContentPiecesByTitle(titlePartial);
 
     if (matches.length === 0) {
       throw new Error(`No content found matching '${titlePartial}'.`);
@@ -509,35 +505,9 @@ export function registerContentTools(server: McpServer) {
           return error('Invalid date format. Use ISO 8601 (e.g. 2026-04-01).');
         }
 
-        const pieces = await prisma.contentPiece.findMany({
-          where: {
-            OR: [
-              {
-                publishedAt: {
-                  gte: fromDate,
-                  lte: toDate,
-                },
-              },
-              {
-                publishedAt: null,
-                createdAt: {
-                  gte: fromDate,
-                  lte: toDate,
-                },
-              },
-            ],
-          },
-          orderBy: { publishedAt: 'asc' },
-          select: {
-            id: true,
-            title: true,
-            slug: true,
-            contentType: true,
-            status: true,
-            publishedAt: true,
-            createdAt: true,
-            campaign: { select: { name: true } },
-          },
+        const pieces = await getContentPiecesForCalendar({
+          fromDate,
+          toDate,
         });
 
         const scheduled = pieces.filter((p) => p.publishedAt !== null);

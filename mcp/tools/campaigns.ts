@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { prisma } from '@/lib/db';
+import { findCampaignMatchesByName } from '@/lib/db/campaigns';
 import {
   getCampaigns,
   getCampaign,
@@ -82,14 +82,10 @@ export function registerCampaignTools(server: McpServer) {
         }
 
         // Name-based search: case-insensitive partial match (Postgres)
-        const matches = await prisma.campaign.findMany({
-          where: { name: { contains: name, mode: 'insensitive' } },
-          include: {
-            _count: {
-              select: { sessions: true, artifacts: true, performanceLogs: true },
-            },
-          },
-        });
+        if (!name) {
+          return error('Provide either campaign_id or name.');
+        }
+        const matches = await findCampaignMatchesByName(name);
 
         if (matches.length === 0) {
           const all = await getCampaigns();
@@ -100,7 +96,15 @@ export function registerCampaignTools(server: McpServer) {
         }
 
         if (matches.length === 1) {
-          return text(JSON.stringify(matches[0], null, 2));
+          const campaign = await getCampaign(matches[0].id);
+          if (!campaign) {
+            const all = await getCampaigns();
+            const names = all.map((c) => c.name).join(', ');
+            return error(
+              `No campaign found matching '${name}'. Active campaigns: ${names || 'none'}`
+            );
+          }
+          return text(JSON.stringify(campaign, null, 2));
         }
 
         const list = matches.map((c) => `${c.name} (${c.id})`).join(', ');

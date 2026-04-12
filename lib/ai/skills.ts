@@ -98,10 +98,11 @@ export function loadSkills(skillNames: string[]): string {
     let content: string;
     try {
       content = readFileSync(filePath, 'utf-8');
-    } catch {
+    } catch (error) {
       throw new Error(
         `Skill file not found: ${name}. Expected at: ${filePath}. ` +
-          `Run the skills update action in settings to fetch the latest skills.`
+          `Run the skills update action in settings to fetch the latest skills.`,
+        { cause: error }
       );
     }
 

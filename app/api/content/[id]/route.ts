@@ -1,7 +1,33 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { requireRole } from '@/lib/auth';
 import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import { getContentPiece, updateContentPiece, getContentPerformanceSignal } from '@/lib/db/content';
+import {
+  CONTENT_STATUS_VALUES,
+  CONTENT_TYPE_VALUES,
+} from '@/types';
+
+const contentUpdateSchema = z.object({
+  title: z.string().optional(),
+  slug: z.string().optional(),
+  contentType: z.enum(CONTENT_TYPE_VALUES).optional(),
+  body: z.string().optional(),
+  excerpt: z.union([z.string(), z.null()]).optional(),
+  metaTitle: z.union([z.string(), z.null()]).optional(),
+  metaDescription: z.union([z.string(), z.null()]).optional(),
+  targetKeyword: z.union([z.string(), z.null()]).optional(),
+  secondaryKeywords: z.union([z.array(z.string()), z.null()]).optional(),
+  canonicalUrl: z.union([z.string(), z.null()]).optional(),
+  ogTitle: z.union([z.string(), z.null()]).optional(),
+  ogDescription: z.union([z.string(), z.null()]).optional(),
+  ogImageUrl: z.union([z.string(), z.null()]).optional(),
+  twitterCardType: z.union([z.string(), z.null()]).optional(),
+  campaignId: z.union([z.string(), z.null()]).optional(),
+  parentContentId: z.union([z.string(), z.null()]).optional(),
+  publishedAt: z.union([z.string(), z.null()]).optional(),
+  status: z.enum(CONTENT_STATUS_VALUES).optional(),
+});
 
 export async function GET(
   _request: Request,
@@ -45,31 +71,39 @@ export async function PATCH(
     const { data: body, error } = await parseJsonBody(request);
     if (error) return error;
 
+    const parsedBody = contentUpdateSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: parsedBody.error.issues[0]?.message ?? 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+
     // If status changes to 'published' and publishedAt is null, set it
-    const updateData: Record<string, unknown> = {};
+    const updateData: Parameters<typeof updateContentPiece>[1] = {};
 
-    if (body.title !== undefined) updateData.title = body.title;
-    if (body.slug !== undefined) updateData.slug = body.slug;
-    if (body.contentType !== undefined) updateData.contentType = body.contentType;
-    if (body.body !== undefined) updateData.body = body.body;
-    if (body.excerpt !== undefined) updateData.excerpt = body.excerpt;
-    if (body.metaTitle !== undefined) updateData.metaTitle = body.metaTitle;
-    if (body.metaDescription !== undefined) updateData.metaDescription = body.metaDescription;
-    if (body.targetKeyword !== undefined) updateData.targetKeyword = body.targetKeyword;
-    if (body.secondaryKeywords !== undefined) updateData.secondaryKeywords = body.secondaryKeywords;
-    if (body.canonicalUrl !== undefined) updateData.canonicalUrl = body.canonicalUrl;
-    if (body.ogTitle !== undefined) updateData.ogTitle = body.ogTitle;
-    if (body.ogDescription !== undefined) updateData.ogDescription = body.ogDescription;
-    if (body.ogImageUrl !== undefined) updateData.ogImageUrl = body.ogImageUrl;
-    if (body.twitterCardType !== undefined) updateData.twitterCardType = body.twitterCardType;
-    if (body.campaignId !== undefined) updateData.campaignId = body.campaignId;
-    if (body.parentContentId !== undefined) updateData.parentContentId = body.parentContentId;
+    if (parsedBody.data.title !== undefined) updateData.title = parsedBody.data.title;
+    if (parsedBody.data.slug !== undefined) updateData.slug = parsedBody.data.slug;
+    if (parsedBody.data.contentType !== undefined) updateData.contentType = parsedBody.data.contentType;
+    if (parsedBody.data.body !== undefined) updateData.body = parsedBody.data.body;
+    if (parsedBody.data.excerpt !== undefined) updateData.excerpt = parsedBody.data.excerpt;
+    if (parsedBody.data.metaTitle !== undefined) updateData.metaTitle = parsedBody.data.metaTitle;
+    if (parsedBody.data.metaDescription !== undefined) updateData.metaDescription = parsedBody.data.metaDescription;
+    if (parsedBody.data.targetKeyword !== undefined) updateData.targetKeyword = parsedBody.data.targetKeyword;
+    if (parsedBody.data.secondaryKeywords !== undefined) updateData.secondaryKeywords = parsedBody.data.secondaryKeywords ?? [];
+    if (parsedBody.data.canonicalUrl !== undefined) updateData.canonicalUrl = parsedBody.data.canonicalUrl;
+    if (parsedBody.data.ogTitle !== undefined) updateData.ogTitle = parsedBody.data.ogTitle;
+    if (parsedBody.data.ogDescription !== undefined) updateData.ogDescription = parsedBody.data.ogDescription;
+    if (parsedBody.data.ogImageUrl !== undefined) updateData.ogImageUrl = parsedBody.data.ogImageUrl;
+    if (parsedBody.data.twitterCardType !== undefined) updateData.twitterCardType = parsedBody.data.twitterCardType;
+    if (parsedBody.data.campaignId !== undefined) updateData.campaignId = parsedBody.data.campaignId;
+    if (parsedBody.data.parentContentId !== undefined) updateData.parentContentId = parsedBody.data.parentContentId;
 
-    if (body.publishedAt !== undefined) {
-      if (body.publishedAt === null || body.publishedAt === '') {
+    if (parsedBody.data.publishedAt !== undefined) {
+      if (parsedBody.data.publishedAt === null || parsedBody.data.publishedAt === '') {
         updateData.publishedAt = null;
       } else {
-        const parsed = parseISODate(body.publishedAt);
+        const parsed = parseISODate(parsedBody.data.publishedAt);
         if (!parsed) {
           return NextResponse.json(
             { error: 'Invalid publishedAt date format. Use ISO 8601 (e.g. 2026-04-11).' },
@@ -80,12 +114,12 @@ export async function PATCH(
       }
     }
 
-    if (body.status !== undefined) {
-      updateData.status = body.status;
+    if (parsedBody.data.status !== undefined) {
+      updateData.status = parsedBody.data.status;
       if (
-        body.status === 'published' &&
+        parsedBody.data.status === 'published' &&
         !existing.publishedAt &&
-        body.publishedAt === undefined
+        parsedBody.data.publishedAt === undefined
       ) {
         updateData.publishedAt = new Date();
       }
@@ -98,7 +132,7 @@ export async function PATCH(
       );
     }
 
-    const piece = await updateContentPiece(params.id, updateData as Parameters<typeof updateContentPiece>[1]);
+    const piece = await updateContentPiece(params.id, updateData);
 
     return NextResponse.json({
       contentPiece: piece,

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { requireRole } from '@/lib/auth';
 import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 import {
@@ -6,6 +7,22 @@ import {
   getContextVersions,
   createContextVersion,
 } from '@/lib/db/context';
+import { CONTEXT_UPDATE_SOURCE_VALUES } from '@/types';
+
+const contextCreateSchema = z.object({
+  positioningStatement: z.union([z.string(), z.null()]).optional(),
+  icpDefinition: z.unknown().optional(),
+  messagingPillars: z.unknown().optional(),
+  competitiveLandscape: z.unknown().optional(),
+  customerLanguage: z.unknown().optional(),
+  proofPoints: z.unknown().optional(),
+  activeHypotheses: z.unknown().optional(),
+  brandVoice: z.union([z.string(), z.null()]).optional(),
+  wordsToUse: z.union([z.array(z.string()), z.null()]).optional(),
+  wordsToAvoid: z.union([z.array(z.string()), z.null()]).optional(),
+  updateSource: z.union([z.enum(CONTEXT_UPDATE_SOURCE_VALUES), z.null()]).optional(),
+  changeSummary: z.string().trim().min(1, 'Change summary is required when saving context'),
+});
 
 export async function GET(request: Request) {
   const auth = await requireRole('viewer');
@@ -40,30 +57,29 @@ export async function POST(request: Request) {
 
   const parsed = await parseJsonBody(request);
   if (parsed.error) return parsed.error;
-  const body = parsed.data;
-
-  if (!body.changeSummary || typeof body.changeSummary !== 'string' || (body.changeSummary as string).trim().length === 0) {
+  const body = contextCreateSchema.safeParse(parsed.data);
+  if (!body.success) {
     return NextResponse.json(
-      { error: 'Change summary is required when saving context' },
+      { error: body.error.issues[0]?.message ?? 'Invalid request body' },
       { status: 400 }
     );
   }
 
   try {
     const version = await createContextVersion({
-      positioningStatement: (body.positioningStatement as string) ?? null,
-      icpDefinition: body.icpDefinition ?? undefined,
-      messagingPillars: body.messagingPillars ?? undefined,
-      competitiveLandscape: body.competitiveLandscape ?? undefined,
-      customerLanguage: body.customerLanguage ?? undefined,
-      proofPoints: body.proofPoints ?? undefined,
-      activeHypotheses: body.activeHypotheses ?? undefined,
-      brandVoice: (body.brandVoice as string) ?? null,
-      wordsToUse: (body.wordsToUse as string[]) ?? [],
-      wordsToAvoid: (body.wordsToAvoid as string[]) ?? [],
+      positioningStatement: body.data.positioningStatement ?? null,
+      icpDefinition: body.data.icpDefinition ?? undefined,
+      messagingPillars: body.data.messagingPillars ?? undefined,
+      competitiveLandscape: body.data.competitiveLandscape ?? undefined,
+      customerLanguage: body.data.customerLanguage ?? undefined,
+      proofPoints: body.data.proofPoints ?? undefined,
+      activeHypotheses: body.data.activeHypotheses ?? undefined,
+      brandVoice: body.data.brandVoice ?? null,
+      wordsToUse: body.data.wordsToUse ?? [],
+      wordsToAvoid: body.data.wordsToAvoid ?? [],
       updatedBy: auth.id,
-      updateSource: (body.updateSource as string) ?? 'manual',
-      changeSummary: (body.changeSummary as string).trim(),
+      updateSource: body.data.updateSource ?? 'manual',
+      changeSummary: body.data.changeSummary,
     });
 
     return NextResponse.json({ version }, { status: 201 });

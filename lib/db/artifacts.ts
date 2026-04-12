@@ -20,6 +20,35 @@ import { prisma } from '@/lib/db';
 import { REMINDER_PREFIX, ARTIFACT_STATUSES } from '@/types';
 import type { ArtifactStatus, PerformanceSignal } from '@/types';
 
+export async function findArtifactMatchesByTitle(
+  titlePartial: string,
+  take: number = 5
+) {
+  return prisma.artifact.findMany({
+    where: { title: { contains: titlePartial, mode: 'insensitive' } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, title: true },
+    take,
+  });
+}
+
+export async function getArtifactCampaignId(artifactId: string) {
+  const artifact = await prisma.artifact.findUnique({
+    where: { id: artifactId },
+    select: { campaignId: true },
+  });
+
+  return artifact?.campaignId;
+}
+
+export async function getRecentArtifacts(limit: number = 5) {
+  return prisma.artifact.findMany({
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: { title: true, type: true, status: true },
+  });
+}
+
 export async function createArtifact(data: {
   title: string;
   type: string;

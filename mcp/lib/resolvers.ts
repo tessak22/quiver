@@ -5,8 +5,11 @@
  * with case-insensitive partial matching. These resolvers bridge the gap.
  */
 
-import { prisma } from '@/lib/db';
-import { getDefaultCampaign } from '@/lib/db/campaigns';
+import {
+  getDefaultCampaign,
+  findCampaignMatchesByName,
+} from '@/lib/db/campaigns';
+import { findArtifactMatchesByTitle } from '@/lib/db/artifacts';
 
 /**
  * Resolve a campaign ID from an optional ID or name.
@@ -20,11 +23,7 @@ export async function resolveCampaignId(
   if (campaignId) return campaignId;
 
   if (campaignName) {
-    const matches = await prisma.campaign.findMany({
-      where: { name: { contains: campaignName, mode: 'insensitive' } },
-      select: { id: true, name: true },
-      take: 5,
-    });
+    const matches = await findCampaignMatchesByName(campaignName);
     if (matches.length === 0) {
       throw new Error(
         `No campaign found matching '${campaignName}'. Check campaign names with list_campaigns.`
@@ -63,12 +62,7 @@ export async function resolveArtifactId(
   if (artifactId) return artifactId;
   if (!artifactTitle) return undefined;
 
-  const matches = await prisma.artifact.findMany({
-    where: { title: { contains: artifactTitle, mode: 'insensitive' } },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, title: true },
-    take: 5,
-  });
+  const matches = await findArtifactMatchesByTitle(artifactTitle);
 
   if (matches.length === 0) {
     throw new Error(`No artifact found matching '${artifactTitle}'.`);

@@ -1,7 +1,20 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { requireRole } from '@/lib/auth';
 import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import { getDistribution, updateDistribution, deleteDistribution } from '@/lib/db/content';
+import {
+  DISTRIBUTION_CHANNEL_VALUES,
+  DISTRIBUTION_STATUS_VALUES,
+} from '@/types';
+
+const distributionUpdateSchema = z.object({
+  channel: z.enum(DISTRIBUTION_CHANNEL_VALUES).optional(),
+  url: z.union([z.string(), z.null()]).optional(),
+  publishedAt: z.union([z.string(), z.null()]).optional(),
+  status: z.enum(DISTRIBUTION_STATUS_VALUES).optional(),
+  notes: z.union([z.string(), z.null()]).optional(),
+});
 
 export async function PATCH(
   request: Request,
@@ -24,13 +37,21 @@ export async function PATCH(
     const { data: body, error } = await parseJsonBody(request);
     if (error) return error;
 
+    const parsedBody = distributionUpdateSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: parsedBody.error.issues[0]?.message ?? 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+
     let parsedDate: Date | null | undefined;
-    if (body.publishedAt === undefined) {
+    if (parsedBody.data.publishedAt === undefined) {
       parsedDate = undefined;
-    } else if (body.publishedAt === null || body.publishedAt === '') {
+    } else if (parsedBody.data.publishedAt === null || parsedBody.data.publishedAt === '') {
       parsedDate = null;
     } else {
-      const parsed = parseISODate(body.publishedAt);
+      const parsed = parseISODate(parsedBody.data.publishedAt);
       if (!parsed) {
         return NextResponse.json(
           { error: 'Invalid publishedAt date format. Use ISO 8601 (e.g. 2026-04-11).' },
@@ -41,11 +62,11 @@ export async function PATCH(
     }
 
     const distribution = await updateDistribution(params.distributionId, {
-      channel: body.channel as string | undefined,
-      url: body.url as string | undefined,
+      channel: parsedBody.data.channel,
+      url: parsedBody.data.url ?? undefined,
       publishedAt: parsedDate,
-      status: body.status as string | undefined,
-      notes: body.notes as string | undefined,
+      status: parsedBody.data.status,
+      notes: parsedBody.data.notes ?? undefined,
     });
 
     return NextResponse.json({ distribution });

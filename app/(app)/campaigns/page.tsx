@@ -283,7 +283,11 @@ export default function CampaignsPage() {
       .then((data: { members?: Array<{ id: string; name: string }> }) =>
         setTeamMembers(data.members ?? [])
       )
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[campaigns/page] Failed to load team members', {
+          error: err,
+        });
+      });
   }, []);
 
   // Fetch campaigns
