@@ -17,6 +17,15 @@
 import { prisma } from '@/lib/db';
 import type { SessionMode } from '@/types';
 
+export async function getRecentSessions(limit: number = 5) {
+  return prisma.session.findMany({
+    where: { isArchived: false },
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: { title: true, mode: true, updatedAt: true },
+  });
+}
+
 export async function createSession(data: {
   mode: SessionMode;
   skillsLoaded: string[];

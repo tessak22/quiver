@@ -87,6 +87,30 @@ export async function getPerformanceLog(id: string) {
   });
 }
 
+export async function getProposalLogsByStatus(
+  status: 'pending' | 'approved' | 'rejected' | 'all'
+) {
+  return prisma.performanceLog.findMany({
+    where:
+      status === 'pending'
+        ? {
+            contextUpdateStatus: 'pending',
+            proposedContextUpdates: { not: Prisma.AnyNull },
+          }
+        : status === 'all'
+          ? { proposedContextUpdates: { not: Prisma.AnyNull } }
+          : {
+              contextUpdateStatus: status,
+              proposedContextUpdates: { not: Prisma.AnyNull },
+            },
+    include: {
+      artifact: { select: { id: true, title: true, type: true } },
+      campaign: { select: { id: true, name: true } },
+    },
+    orderBy: { recordedAt: 'desc' },
+  });
+}
+
 export async function updatePerformanceLog(
   id: string,
   data: {
@@ -123,15 +147,5 @@ export async function getRecentPerformanceLogs(days: number = 30) {
 }
 
 export async function getPendingProposals() {
-  return prisma.performanceLog.findMany({
-    where: {
-      contextUpdateStatus: 'pending',
-      proposedContextUpdates: { not: Prisma.AnyNull },
-    },
-    include: {
-      artifact: { select: { id: true, title: true, type: true } },
-      campaign: { select: { id: true, name: true } },
-    },
-    orderBy: { recordedAt: 'desc' },
-  });
+  return getProposalLogsByStatus('pending');
 }

@@ -1,7 +1,28 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { requireRole } from '@/lib/auth';
 import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import { getContentPiece, addMetricSnapshot, getMetricSnapshots } from '@/lib/db/content';
+import { CONTENT_METRIC_SOURCE_VALUES } from '@/types';
+
+const metricSnapshotCreateSchema = z.object({
+  snapshotDate: z.union([z.string(), z.null()]).optional(),
+  pageviews: z.number().optional(),
+  uniqueVisitors: z.number().optional(),
+  avgTimeOnPage: z.number().optional(),
+  bounceRate: z.number().optional(),
+  organicClicks: z.number().optional(),
+  impressions: z.number().optional(),
+  avgPosition: z.number().optional(),
+  ctr: z.number().optional(),
+  socialShares: z.number().optional(),
+  backlinks: z.number().optional(),
+  comments: z.number().optional(),
+  signups: z.number().optional(),
+  conversionRate: z.number().optional(),
+  source: z.union([z.enum(CONTENT_METRIC_SOURCE_VALUES), z.null()]).optional(),
+  notes: z.union([z.string(), z.null()]).optional(),
+});
 
 export async function GET(
   request: Request,
@@ -43,9 +64,17 @@ export async function POST(
     const { data: body, error } = await parseJsonBody(request);
     if (error) return error;
 
+    const parsedBody = metricSnapshotCreateSchema.safeParse(body);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: parsedBody.error.issues[0]?.message ?? 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+
     let snapshotDate = new Date();
-    if (body.snapshotDate) {
-      const parsed = parseISODate(body.snapshotDate);
+    if (parsedBody.data.snapshotDate) {
+      const parsed = parseISODate(parsedBody.data.snapshotDate);
       if (!parsed) {
         return NextResponse.json(
           { error: 'Invalid snapshotDate format. Use ISO 8601 (e.g. 2026-04-11).' },
@@ -58,21 +87,21 @@ export async function POST(
     const snapshot = await addMetricSnapshot({
       contentPieceId: params.id,
       snapshotDate,
-      pageviews: body.pageviews as number | undefined,
-      uniqueVisitors: body.uniqueVisitors as number | undefined,
-      avgTimeOnPage: body.avgTimeOnPage as number | undefined,
-      bounceRate: body.bounceRate as number | undefined,
-      organicClicks: body.organicClicks as number | undefined,
-      impressions: body.impressions as number | undefined,
-      avgPosition: body.avgPosition as number | undefined,
-      ctr: body.ctr as number | undefined,
-      socialShares: body.socialShares as number | undefined,
-      backlinks: body.backlinks as number | undefined,
-      comments: body.comments as number | undefined,
-      signups: body.signups as number | undefined,
-      conversionRate: body.conversionRate as number | undefined,
-      source: (body.source as string) ?? 'manual',
-      notes: body.notes as string | undefined,
+      pageviews: parsedBody.data.pageviews,
+      uniqueVisitors: parsedBody.data.uniqueVisitors,
+      avgTimeOnPage: parsedBody.data.avgTimeOnPage,
+      bounceRate: parsedBody.data.bounceRate,
+      organicClicks: parsedBody.data.organicClicks,
+      impressions: parsedBody.data.impressions,
+      avgPosition: parsedBody.data.avgPosition,
+      ctr: parsedBody.data.ctr,
+      socialShares: parsedBody.data.socialShares,
+      backlinks: parsedBody.data.backlinks,
+      comments: parsedBody.data.comments,
+      signups: parsedBody.data.signups,
+      conversionRate: parsedBody.data.conversionRate,
+      source: parsedBody.data.source ?? 'manual',
+      notes: parsedBody.data.notes ?? undefined,
       recordedBy: auth.id,
     });
 

@@ -69,6 +69,26 @@ export async function getDefaultCampaign() {
   });
 }
 
+export async function countCampaignsByStatus(status: CampaignStatus) {
+  return prisma.campaign.count({
+    where: { status },
+  });
+}
+
+export async function findCampaignMatchesByName(name: string, take: number = 5) {
+  return prisma.campaign.findMany({
+    where: {
+      name: { contains: name, mode: 'insensitive' },
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+    orderBy: { updatedAt: 'desc' },
+    take,
+  });
+}
+
 // -------------------------------------------------------------------------
 // Read
 // -------------------------------------------------------------------------

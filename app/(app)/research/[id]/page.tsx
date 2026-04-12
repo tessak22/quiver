@@ -254,8 +254,13 @@ export default function ResearchEntryDetailPage() {
     fetch('/api/campaigns')
       .then((res) => res.json())
       .then((data: { campaigns: CampaignOption[] }) => setCampaigns(data.campaigns))
-      .catch(() => {});
-  }, [editOpen]);
+      .catch((err) => {
+        console.warn('[research/detail] Failed to load campaigns for edit dialog', {
+          entryId,
+          error: err,
+        });
+      });
+  }, [editOpen, entryId]);
 
   // Toggle quote featured
   async function handleToggleFeatured(quoteId: string) {
@@ -275,9 +280,16 @@ export default function ResearchEntryDetailPage() {
             ),
           };
         });
+      } else {
+        setError('Failed to update quote');
       }
-    } catch {
-      // Non-critical
+    } catch (err) {
+      console.error('[research/detail] Failed to update featured quote', {
+        entryId,
+        quoteId,
+        error: err,
+      });
+      setError('Failed to update quote');
     } finally {
       setTogglingQuoteId(null);
     }
@@ -289,7 +301,12 @@ export default function ResearchEntryDetailPage() {
       await navigator.clipboard.writeText(quoteText);
       setCopySuccess(quoteId);
       setTimeout(() => setCopySuccess(null), 2000);
-    } catch {
+    } catch (err) {
+      console.error('[research/detail] Failed to copy quote', {
+        entryId,
+        quoteId,
+        error: err,
+      });
       setError('Failed to copy to clipboard');
     }
   }
@@ -429,7 +446,11 @@ export default function ResearchEntryDetailPage() {
       await navigator.clipboard.writeText(text);
       setLinearCopied(true);
       setTimeout(() => setLinearCopied(false), 2000);
-    } catch {
+    } catch (err) {
+      console.error('[research/detail] Failed to copy Linear payload', {
+        entryId,
+        error: err,
+      });
       setError('Failed to copy to clipboard');
     }
   }

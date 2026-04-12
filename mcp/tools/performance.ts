@@ -1,15 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
 import {
   createPerformanceLog,
   getPerformanceLogs,
   getPerformanceLog,
-  getPendingProposals,
+  getProposalLogsByStatus,
   updatePerformanceLog,
 } from '@/lib/db/performance';
-import { getReminders } from '@/lib/db/artifacts';
+import { getReminders, getArtifactCampaignId } from '@/lib/db/artifacts';
 import { applyContextUpdates } from '@/lib/db/context';
 import { synthesizePerformance } from '@/lib/ai/synthesis-core';
 import { text, error } from '../lib/response.js';
@@ -74,11 +72,7 @@ export function registerPerformanceTools(server: McpServer) {
         // If we have an artifact but no campaign, look up the artifact's campaign
         let campaignId = resolvedCampaignId;
         if (!campaignId && resolvedArtifactId) {
-          const artifact = await prisma.artifact.findUnique({
-            where: { id: resolvedArtifactId },
-            select: { campaignId: true },
-          });
-          campaignId = artifact?.campaignId;
+          campaignId = await getArtifactCampaignId(resolvedArtifactId);
         }
 
         if (!campaignId) {
@@ -243,28 +237,7 @@ export function registerPerformanceTools(server: McpServer) {
     },
     async ({ status }) => {
       try {
-        if (status === 'pending') {
-          const proposals = await getPendingProposals();
-          return text(JSON.stringify(proposals, null, 2));
-        }
-
-        // For 'all', 'approved', 'rejected' — query directly
-        const where =
-          status === 'all'
-            ? { proposedContextUpdates: { not: Prisma.AnyNull } }
-            : {
-                contextUpdateStatus: status,
-                proposedContextUpdates: { not: Prisma.AnyNull },
-              };
-
-        const logs = await prisma.performanceLog.findMany({
-          where,
-          include: {
-            artifact: { select: { id: true, title: true, type: true } },
-            campaign: { select: { id: true, name: true } },
-          },
-          orderBy: { recordedAt: 'desc' },
-        });
+        const logs = await getProposalLogsByStatus(status);
 
         return text(JSON.stringify(logs, null, 2));
       } catch (err) {

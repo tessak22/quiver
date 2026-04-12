@@ -17,7 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { PerformanceLogType, ContextUpdateProposal } from '@/types';
+import {
+  PERFORMANCE_LOG_TYPES,
+  type PerformanceLogType,
+  type ContextUpdateProposal,
+  isPerformanceLogType,
+} from '@/types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -122,7 +127,21 @@ const LOG_TYPE_LABELS: Record<PerformanceLogType, string> = {
   campaign: 'Campaign',
   channel: 'Channel',
   audience_segment: 'Audience Segment',
+  context_proposal: 'Context Proposal',
 };
+
+const USER_SELECTABLE_LOG_TYPES = PERFORMANCE_LOG_TYPES.filter(
+  (value) => value !== 'context_proposal'
+);
+
+const LOG_TYPE_OPTIONS = USER_SELECTABLE_LOG_TYPES.map((value) => ({
+  value,
+  label: LOG_TYPE_LABELS[value],
+}));
+
+function formatLogType(logType: string): string {
+  return isPerformanceLogType(logType) ? LOG_TYPE_LABELS[logType] : logType;
+}
 
 const EMPTY_FORM: LogFormData = {
   artifactId: '',
@@ -234,7 +253,7 @@ function LogEntry({
                 {log.artifact?.title || 'Campaign-level'}
               </span>
               <Badge variant="outline" className="text-xs">
-                {LOG_TYPE_LABELS[log.logType as PerformanceLogType] || log.logType}
+                {formatLogType(log.logType)}
               </Badge>
               {proposals && proposals.length > 0 && (
                 <Badge variant="secondary" className="text-xs">
@@ -570,7 +589,7 @@ export default function PerformancePage() {
       const date = formatDateTime(log.recordedAt);
       const artifact = log.artifact?.title ?? '';
       const campaign = log.campaign.name;
-      const logType = LOG_TYPE_LABELS[log.logType as PerformanceLogType] ?? log.logType;
+      const logType = formatLogType(log.logType);
       const whatWorked = log.whatWorked ?? '';
       const whatDidnt = log.whatDidnt ?? '';
       const notes = log.qualitativeNotes ?? '';
@@ -702,19 +721,14 @@ export default function PerformancePage() {
                     <Select
                       value={form.logType}
                       onValueChange={(v) =>
-                        updateField('logType', v as PerformanceLogType)
+                        isPerformanceLogType(v) ? updateField('logType', v) : undefined
                       }
                     >
                       <SelectTrigger id="logType">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(
-                          Object.entries(LOG_TYPE_LABELS) as [
-                            PerformanceLogType,
-                            string,
-                          ][]
-                        ).map(([value, label]) => (
+                        {LOG_TYPE_OPTIONS.map(({ value, label }) => (
                           <SelectItem key={value} value={value}>
                             {label}
                           </SelectItem>

@@ -64,6 +64,54 @@ export async function generateSlug(title: string): Promise<string> {
   throw new Error(`Could not generate a unique slug for "${title}".`);
 }
 
+export async function findContentPiecesByTitle(
+  titlePartial: string,
+  take: number = 5
+) {
+  return prisma.contentPiece.findMany({
+    where: { title: { contains: titlePartial, mode: 'insensitive' } },
+    orderBy: { createdAt: 'desc' },
+    take,
+    select: { id: true, title: true },
+  });
+}
+
+export async function getContentPiecesForCalendar(options: {
+  fromDate: Date;
+  toDate: Date;
+}) {
+  return prisma.contentPiece.findMany({
+    where: {
+      OR: [
+        {
+          publishedAt: {
+            gte: options.fromDate,
+            lte: options.toDate,
+          },
+        },
+        {
+          publishedAt: null,
+          createdAt: {
+            gte: options.fromDate,
+            lte: options.toDate,
+          },
+        },
+      ],
+    },
+    orderBy: { publishedAt: 'asc' },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      contentType: true,
+      status: true,
+      publishedAt: true,
+      createdAt: true,
+      campaign: { select: { name: true } },
+    },
+  });
+}
+
 // -------------------------------------------------------------------------
 // Content pieces — read
 // -------------------------------------------------------------------------
@@ -196,19 +244,19 @@ export async function updateContentPiece(
     contentType?: string;
     status?: string;
     body?: string;
-    excerpt?: string;
-    metaTitle?: string;
-    metaDescription?: string;
-    targetKeyword?: string;
+    excerpt?: string | null;
+    metaTitle?: string | null;
+    metaDescription?: string | null;
+    targetKeyword?: string | null;
     secondaryKeywords?: string[];
-    canonicalUrl?: string;
-    ogTitle?: string;
-    ogDescription?: string;
-    ogImageUrl?: string;
-    twitterCardType?: string;
+    canonicalUrl?: string | null;
+    ogTitle?: string | null;
+    ogDescription?: string | null;
+    ogImageUrl?: string | null;
+    twitterCardType?: string | null;
     publishedAt?: Date | null;
-    campaignId?: string;
-    parentContentId?: string;
+    campaignId?: string | null;
+    parentContentId?: string | null;
   }
 ) {
   const updateData: Record<string, unknown> = {};

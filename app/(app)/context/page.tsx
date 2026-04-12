@@ -515,7 +515,11 @@ export default function ContextEditorPage() {
       .then((data: { members?: Array<{ id: string; name: string }> }) =>
         setTeamMembers(data.members ?? [])
       )
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[context/page] Failed to load team members', {
+          error: err,
+        });
+      });
   }, []);
 
   function resolveUserName(userId: string | null): string {
@@ -527,23 +531,45 @@ export default function ContextEditorPage() {
   // ------ Data fetching ------
 
   const fetchActive = useCallback(async () => {
-    const res = await fetch('/api/context');
-    if (res.ok) {
-      const data: { context: ContextVersionRecord } = await res.json();
-      setActiveVersion(data.context);
-      setForm(recordToFormData(data.context));
-      setViewingVersion(null);
-      setIsDirty(false);
-    } else if (res.status !== 404) {
+    try {
+      const res = await fetch('/api/context');
+      if (res.ok) {
+        const data: { context: ContextVersionRecord } = await res.json();
+        setActiveVersion(data.context);
+        setForm(recordToFormData(data.context));
+        setViewingVersion(null);
+        setIsDirty(false);
+      } else if (res.status !== 404) {
+        console.error('[context/page] Failed to load active context', {
+          status: res.status,
+        });
+        setError('Failed to load context');
+      }
+    } catch (err) {
+      console.error('[context/page] Failed to load active context', {
+        error: err,
+      });
       setError('Failed to load context');
     }
   }, []);
 
   const fetchHistory = useCallback(async () => {
-    const res = await fetch('/api/context?history=true');
-    if (res.ok) {
-      const data: { versions: ContextVersionRecord[] } = await res.json();
-      setVersions(data.versions);
+    try {
+      const res = await fetch('/api/context?history=true');
+      if (res.ok) {
+        const data: { versions: ContextVersionRecord[] } = await res.json();
+        setVersions(data.versions);
+      } else {
+        console.error('[context/page] Failed to load context history', {
+          status: res.status,
+        });
+        setError('Failed to load context history');
+      }
+    } catch (err) {
+      console.error('[context/page] Failed to load context history', {
+        error: err,
+      });
+      setError('Failed to load context history');
     }
   }, []);
 
@@ -553,9 +579,15 @@ export default function ContextEditorPage() {
       if (res.ok) {
         const data: { proposals: ProposalRecord[] } = await res.json();
         setProposals(data.proposals);
+      } else {
+        console.warn('[context/page] Failed to load proposals', {
+          status: res.status,
+        });
       }
-    } catch {
-      // Non-critical — proposals may just be empty
+    } catch (err) {
+      console.warn('[context/page] Failed to load proposals', {
+        error: err,
+      });
     }
   }, []);
 

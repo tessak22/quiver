@@ -2,7 +2,7 @@
 // form interactions, auto-save, and dynamic tab content
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { marked } from 'marked';
@@ -196,6 +196,42 @@ function formatDecimal(n: number | null, digits: number = 1): string {
   return n.toFixed(digits);
 }
 
+async function readJsonResponse<T>(
+  response: Response,
+  fallbackError: string
+): Promise<T> {
+  if (!response.ok) {
+    const rawBody = await response.text();
+    const data = safeParseErrorBody(rawBody);
+
+    if (data?.error) {
+      throw new Error(data.error);
+    }
+
+    const statusMessage = `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+    if (rawBody.trim().length > 0) {
+      const preview = rawBody.trim().slice(0, 200);
+      throw new Error(`${fallbackError} (${statusMessage}): ${preview}`);
+    }
+
+    throw new Error(`${fallbackError} (${statusMessage})`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+function safeParseErrorBody(rawBody: string): { error?: string } | null {
+  if (!rawBody.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawBody) as { error?: string };
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -211,7 +247,8 @@ export default function ContentDetailPage() {
 
   // Edit tab state
   const [editBody, setEditBody] = useState('');
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveStateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // SEO tab state
   const [seoForm, setSeoForm] = useState({
@@ -281,16 +318,10 @@ export default function ContentDetailPage() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/content/${contentId}`);
-      if (!res.ok) {
-        const data = await res.json() as { error?: string };
-        throw new Error(data.error ?? 'Failed to load content');
-      }
-
-      const data = await res.json() as {
+      const data = await readJsonResponse<{
         contentPiece: ContentDetail;
         performanceSignal?: PerformanceSignal;
-      };
+      }>(await fetch(`/api/content/${contentId}`), 'Failed to load content');
       setPiece(data.contentPiece);
       setPerfSignal(data.performanceSignal ?? 'no_data');
       setEditBody(data.contentPiece.body);
@@ -308,6 +339,10 @@ export default function ContentDetailPage() {
         twitterCardType: data.contentPiece.twitterCardType ?? 'summary_large_image',
       });
     } catch (err) {
+      console.error('[content/detail] Failed to load content', {
+        contentId,
+        error: err,
+      });
       setError(err instanceof Error ? err.message : 'Failed to load content');
     } finally {
       setLoading(false);
@@ -318,25 +353,48 @@ export default function ContentDetailPage() {
     fetchPiece();
   }, [fetchPiece]);
 
+  useEffect(() => {
+    return () => {
+      if (saveStateTimerRef.current) {
+        clearTimeout(saveStateTimerRef.current);
+      }
+    };
+  }, []);
+
   // Auto-save body on blur
   async function handleBodyBlur() {
-    if (!piece || editBody === piece.body) return;
+    if (!piece || editBody === piece.body || saveState === 'saving') return;
+    if (saveStateTimerRef.current) {
+      clearTimeout(saveStateTimerRef.current);
+      saveStateTimerRef.current = null;
+    }
+
     setSaveState('saving');
     try {
-      const res = await fetch(`/api/content/${contentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: editBody }),
+      const data = await readJsonResponse<{
+        contentPiece: ContentDetail;
+        performanceSignal?: PerformanceSignal;
+      }>(
+        await fetch(`/api/content/${contentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: editBody }),
+        }),
+        'Failed to save content'
+      );
+
+      setPiece(data.contentPiece);
+      if (data.performanceSignal) setPerfSignal(data.performanceSignal);
+      setSaveState('saved');
+      saveStateTimerRef.current = setTimeout(() => setSaveState('idle'), 2000);
+    } catch (err) {
+      console.error('[content/detail] Autosave failed', {
+        contentId,
+        error: err,
       });
-      if (res.ok) {
-        const data = await res.json() as { contentPiece: ContentDetail; performanceSignal?: PerformanceSignal };
-        setPiece(data.contentPiece);
-        if (data.performanceSignal) setPerfSignal(data.performanceSignal);
-        setSaveState('saved');
-        setTimeout(() => setSaveState('idle'), 2000);
-      }
-    } catch {
-      setSaveState('idle');
+      setError(err instanceof Error ? err.message : 'Failed to save content');
+      setSaveState('error');
+      saveStateTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
     }
   }
 
@@ -344,26 +402,33 @@ export default function ContentDetailPage() {
   async function handleSeoSave() {
     setSeoSaving(true);
     try {
-      const res = await fetch(`/api/content/${contentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          metaTitle: seoForm.metaTitle || null,
-          metaDescription: seoForm.metaDescription || null,
-          targetKeyword: seoForm.targetKeyword || null,
-          secondaryKeywords: seoForm.secondaryKeywords
-            ? seoForm.secondaryKeywords.split(',').map((k) => k.trim()).filter(Boolean)
-            : [],
-          canonicalUrl: seoForm.canonicalUrl || null,
+      const data = await readJsonResponse<{
+        contentPiece: ContentDetail;
+        performanceSignal?: PerformanceSignal;
+      }>(
+        await fetch(`/api/content/${contentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            metaTitle: seoForm.metaTitle || null,
+            metaDescription: seoForm.metaDescription || null,
+            targetKeyword: seoForm.targetKeyword || null,
+            secondaryKeywords: seoForm.secondaryKeywords
+              ? seoForm.secondaryKeywords.split(',').map((k) => k.trim()).filter(Boolean)
+              : [],
+            canonicalUrl: seoForm.canonicalUrl || null,
+          }),
         }),
+        'Failed to save SEO settings'
+      );
+      setPiece(data.contentPiece);
+      if (data.performanceSignal) setPerfSignal(data.performanceSignal);
+    } catch (err) {
+      console.error('[content/detail] Failed to save SEO settings', {
+        contentId,
+        error: err,
       });
-      if (res.ok) {
-        const data = await res.json() as { contentPiece: ContentDetail; performanceSignal?: PerformanceSignal };
-        setPiece(data.contentPiece);
-        if (data.performanceSignal) setPerfSignal(data.performanceSignal);
-      }
-    } catch {
-      setError('Failed to save SEO settings');
+      setError(err instanceof Error ? err.message : 'Failed to save SEO settings');
     } finally {
       setSeoSaving(false);
     }
@@ -373,23 +438,30 @@ export default function ContentDetailPage() {
   async function handleOgSave() {
     setOgSaving(true);
     try {
-      const res = await fetch(`/api/content/${contentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ogTitle: ogForm.ogTitle || null,
-          ogDescription: ogForm.ogDescription || null,
-          ogImageUrl: ogForm.ogImageUrl || null,
-          twitterCardType: ogForm.twitterCardType,
+      const data = await readJsonResponse<{
+        contentPiece: ContentDetail;
+        performanceSignal?: PerformanceSignal;
+      }>(
+        await fetch(`/api/content/${contentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ogTitle: ogForm.ogTitle || null,
+            ogDescription: ogForm.ogDescription || null,
+            ogImageUrl: ogForm.ogImageUrl || null,
+            twitterCardType: ogForm.twitterCardType,
+          }),
         }),
+        'Failed to save OG settings'
+      );
+      setPiece(data.contentPiece);
+      if (data.performanceSignal) setPerfSignal(data.performanceSignal);
+    } catch (err) {
+      console.error('[content/detail] Failed to save OG settings', {
+        contentId,
+        error: err,
       });
-      if (res.ok) {
-        const data = await res.json() as { contentPiece: ContentDetail; performanceSignal?: PerformanceSignal };
-        setPiece(data.contentPiece);
-        if (data.performanceSignal) setPerfSignal(data.performanceSignal);
-      }
-    } catch {
-      setError('Failed to save OG settings');
+      setError(err instanceof Error ? err.message : 'Failed to save OG settings');
     } finally {
       setOgSaving(false);
     }
@@ -400,18 +472,26 @@ export default function ContentDetailPage() {
     if (!piece) return;
     setStatusUpdating(true);
     try {
-      const res = await fetch(`/api/content/${contentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+      const data = await readJsonResponse<{
+        contentPiece: ContentDetail;
+        performanceSignal?: PerformanceSignal;
+      }>(
+        await fetch(`/api/content/${contentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        }),
+        'Failed to update status'
+      );
+      setPiece(data.contentPiece);
+      if (data.performanceSignal) setPerfSignal(data.performanceSignal);
+    } catch (err) {
+      console.error('[content/detail] Failed to update status', {
+        contentId,
+        status: newStatus,
+        error: err,
       });
-      if (res.ok) {
-        const data = await res.json() as { contentPiece: ContentDetail; performanceSignal?: PerformanceSignal };
-        setPiece(data.contentPiece);
-        if (data.performanceSignal) setPerfSignal(data.performanceSignal);
-      }
-    } catch {
-      setError('Failed to update status');
+      setError(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setStatusUpdating(false);
     }
@@ -420,45 +500,57 @@ export default function ContentDetailPage() {
   // Published date save
   async function handlePublishedAtSave() {
     try {
-      const res = await fetch(`/api/content/${contentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          publishedAt: publishedAtInput ? new Date(publishedAtInput).toISOString() : null,
+      const data = await readJsonResponse<{
+        contentPiece: ContentDetail;
+        performanceSignal?: PerformanceSignal;
+      }>(
+        await fetch(`/api/content/${contentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            publishedAt: publishedAtInput ? new Date(publishedAtInput).toISOString() : null,
+          }),
         }),
+        'Failed to update published date'
+      );
+      setPiece(data.contentPiece);
+      if (data.performanceSignal) setPerfSignal(data.performanceSignal);
+      setEditingPublishedAt(false);
+    } catch (err) {
+      console.error('[content/detail] Failed to update published date', {
+        contentId,
+        error: err,
       });
-      if (res.ok) {
-        const data = await res.json() as { contentPiece: ContentDetail; performanceSignal?: PerformanceSignal };
-        setPiece(data.contentPiece);
-        if (data.performanceSignal) setPerfSignal(data.performanceSignal);
-      }
-    } catch {
-      setError('Failed to update published date');
+      setError(err instanceof Error ? err.message : 'Failed to update published date');
     }
-    setEditingPublishedAt(false);
   }
 
   // Add distribution
   async function handleAddDistribution() {
     setDistSaving(true);
     try {
-      const res = await fetch(`/api/content/${contentId}/distributions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channel: distForm.channel,
-          url: distForm.url || undefined,
-          status: distForm.status,
-          notes: distForm.notes || undefined,
+      await readJsonResponse<{ distribution: unknown }>(
+        await fetch(`/api/content/${contentId}/distributions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channel: distForm.channel,
+            url: distForm.url || undefined,
+            status: distForm.status,
+            notes: distForm.notes || undefined,
+          }),
         }),
+        'Failed to add distribution'
+      );
+      setDistForm({ channel: 'website', url: '', status: 'planned', notes: '' });
+      setShowDistForm(false);
+      await fetchPiece();
+    } catch (err) {
+      console.error('[content/detail] Failed to add distribution', {
+        contentId,
+        error: err,
       });
-      if (res.ok) {
-        setDistForm({ channel: 'website', url: '', status: 'planned', notes: '' });
-        setShowDistForm(false);
-        fetchPiece();
-      }
-    } catch {
-      setError('Failed to add distribution');
+      setError(err instanceof Error ? err.message : 'Failed to add distribution');
     } finally {
       setDistSaving(false);
     }
@@ -467,12 +559,20 @@ export default function ContentDetailPage() {
   // Delete distribution
   async function handleDeleteDistribution(distId: string) {
     try {
-      await fetch(`/api/content/${contentId}/distributions/${distId}`, {
-        method: 'DELETE',
+      await readJsonResponse<{ success: true }>(
+        await fetch(`/api/content/${contentId}/distributions/${distId}`, {
+          method: 'DELETE',
+        }),
+        'Failed to delete distribution'
+      );
+      await fetchPiece();
+    } catch (err) {
+      console.error('[content/detail] Failed to delete distribution', {
+        contentId,
+        distributionId: distId,
+        error: err,
       });
-      fetchPiece();
-    } catch {
-      setError('Failed to delete distribution');
+      setError(err instanceof Error ? err.message : 'Failed to delete distribution');
     }
   }
 
@@ -495,22 +595,37 @@ export default function ContentDetailPage() {
       if (metricsForm.signups) payload.signups = parseInt(metricsForm.signups, 10);
       if (metricsForm.conversionRate) payload.conversionRate = parseFloat(metricsForm.conversionRate);
 
-      const res = await fetch(`/api/content/${contentId}/metrics`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      await readJsonResponse<{ snapshot: unknown }>(
+        await fetch(`/api/content/${contentId}/metrics`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+        'Failed to log metrics'
+      );
+      setMetricsForm({
+        pageviews: '',
+        uniqueVisitors: '',
+        avgTimeOnPage: '',
+        bounceRate: '',
+        organicClicks: '',
+        impressions: '',
+        avgPosition: '',
+        ctr: '',
+        socialShares: '',
+        backlinks: '',
+        comments: '',
+        signups: '',
+        conversionRate: '',
       });
-      if (res.ok) {
-        setMetricsForm({
-          pageviews: '', uniqueVisitors: '', avgTimeOnPage: '', bounceRate: '',
-          organicClicks: '', impressions: '', avgPosition: '', ctr: '',
-          socialShares: '', backlinks: '', comments: '', signups: '', conversionRate: '',
-        });
-        setShowMetricsForm(false);
-        fetchPiece();
-      }
-    } catch {
-      setError('Failed to log metrics');
+      setShowMetricsForm(false);
+      await fetchPiece();
+    } catch (err) {
+      console.error('[content/detail] Failed to log metrics', {
+        contentId,
+        error: err,
+      });
+      setError(err instanceof Error ? err.message : 'Failed to log metrics');
     } finally {
       setMetricsSaving(false);
     }
@@ -522,7 +637,11 @@ export default function ContentDetailPage() {
       await navigator.clipboard.writeText(text);
       setter(true);
       setTimeout(() => setter(false), 2000);
-    } catch {
+    } catch (err) {
+      console.error('[content/detail] Failed to copy to clipboard', {
+        contentId,
+        error: err,
+      });
       setError('Failed to copy to clipboard');
     }
   }
@@ -531,23 +650,27 @@ export default function ContentDetailPage() {
   async function handleRepurpose() {
     if (!piece) return;
     try {
-      const res = await fetch('/api/content', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: `${piece.title} (repurposed)`,
-          contentType: piece.contentType,
-          body: piece.body,
-          parentContentId: piece.id,
-          campaignId: piece.campaignId,
+      const data = await readJsonResponse<{ contentPiece: { id: string } }>(
+        await fetch('/api/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `${piece.title} (repurposed)`,
+            contentType: piece.contentType,
+            body: piece.body,
+            parentContentId: piece.id,
+            campaignId: piece.campaignId,
+          }),
         }),
+        'Failed to repurpose content'
+      );
+      window.location.href = `/content/${data.contentPiece.id}`;
+    } catch (err) {
+      console.error('[content/detail] Failed to repurpose content', {
+        contentId,
+        error: err,
       });
-      if (res.ok) {
-        const data = await res.json() as { contentPiece: { id: string } };
-        window.location.href = `/content/${data.contentPiece.id}`;
-      }
-    } catch {
-      setError('Failed to repurpose content');
+      setError(err instanceof Error ? err.message : 'Failed to repurpose content');
     }
   }
 
@@ -661,6 +784,7 @@ export default function ContentDetailPage() {
                     <span className="text-xs text-muted-foreground">
                       {saveState === 'saving' && 'Saving...'}
                       {saveState === 'saved' && 'Saved'}
+                      {saveState === 'error' && 'Save failed'}
                     </span>
                   </div>
                   <Textarea

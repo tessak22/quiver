@@ -37,7 +37,15 @@ export type CampaignStatus = 'planning' | 'active' | 'paused' | 'complete' | 'ar
 export type CampaignPriority = 'high' | 'medium' | 'low';
 
 // Performance log entry types
-export type PerformanceLogType = 'artifact' | 'campaign' | 'channel' | 'audience_segment';
+export const PERFORMANCE_LOG_TYPE_VALUES = [
+  'artifact',
+  'campaign',
+  'channel',
+  'audience_segment',
+  'context_proposal',
+] as const;
+export type PerformanceLogType = typeof PERFORMANCE_LOG_TYPE_VALUES[number];
+export const PERFORMANCE_LOG_TYPES: PerformanceLogType[] = [...PERFORMANCE_LOG_TYPE_VALUES];
 
 // Context update proposal status (used as Prisma enum values)
 export type ContextUpdateStatus = 'pending' | 'approved' | 'rejected' | 'na';
@@ -51,6 +59,14 @@ export const SESSION_MODES: SessionMode[] = ['strategy', 'create', 'feedback', '
 export const CAMPAIGN_STATUSES: CampaignStatus[] = ['planning', 'active', 'paused', 'complete', 'archived'];
 export const CAMPAIGN_PRIORITIES: CampaignPriority[] = ['high', 'medium', 'low'];
 export const ARTIFACT_STATUSES: ArtifactStatus[] = ['draft', 'review', 'approved', 'live', 'archived'];
+
+function isValueOf<T extends string>(value: unknown, values: readonly T[]): value is T {
+  return typeof value === 'string' && values.includes(value as T);
+}
+
+export function isPerformanceLogType(value: unknown): value is PerformanceLogType {
+  return isValueOf(value, PERFORMANCE_LOG_TYPE_VALUES);
+}
 
 // Magic-string constants
 export const DEFAULT_CAMPAIGN_NAME = 'Unassigned';
@@ -121,12 +137,83 @@ export const CONTACT_STAGE_LABELS: Record<ContactStage, string> = {
 
 // --- Issue #49: Content Layer Types ---
 
-export type ContentType = 'blog_post' | 'case_study' | 'landing_page' | 'changelog' | 'newsletter' | 'social_thread' | 'video_script' | 'doc' | 'other';
-export type ContentStatus = 'draft' | 'review' | 'approved' | 'published' | 'archived';
-export type DistributionChannel = 'website' | 'dev_to' | 'hashnode' | 'medium' | 'newsletter' | 'linkedin' | 'twitter' | 'youtube' | 'other';
-export const CONTENT_TYPES: ContentType[] = ['blog_post', 'case_study', 'landing_page', 'changelog', 'newsletter', 'social_thread', 'video_script', 'doc', 'other'];
-export const CONTENT_STATUSES: ContentStatus[] = ['draft', 'review', 'approved', 'published', 'archived'];
-export const DISTRIBUTION_CHANNELS: DistributionChannel[] = ['website', 'dev_to', 'hashnode', 'medium', 'newsletter', 'linkedin', 'twitter', 'youtube', 'other'];
+export const CONTENT_TYPE_VALUES = [
+  'blog_post',
+  'case_study',
+  'landing_page',
+  'changelog',
+  'newsletter',
+  'social_thread',
+  'video_script',
+  'doc',
+  'other',
+] as const;
+export type ContentType = typeof CONTENT_TYPE_VALUES[number];
+export const CONTENT_TYPES: ContentType[] = [...CONTENT_TYPE_VALUES];
+
+export const CONTENT_STATUS_VALUES = [
+  'draft',
+  'review',
+  'approved',
+  'published',
+  'archived',
+] as const;
+export type ContentStatus = typeof CONTENT_STATUS_VALUES[number];
+export const CONTENT_STATUSES: ContentStatus[] = [...CONTENT_STATUS_VALUES];
+
+export const DISTRIBUTION_CHANNEL_VALUES = [
+  'website',
+  'dev_to',
+  'hashnode',
+  'medium',
+  'newsletter',
+  'linkedin',
+  'twitter',
+  'youtube',
+  'other',
+] as const;
+export type DistributionChannel = typeof DISTRIBUTION_CHANNEL_VALUES[number];
+export const DISTRIBUTION_CHANNELS: DistributionChannel[] = [...DISTRIBUTION_CHANNEL_VALUES];
+
+export const DISTRIBUTION_STATUS_VALUES = ['planned', 'published', 'archived'] as const;
+export type DistributionStatus = typeof DISTRIBUTION_STATUS_VALUES[number];
+export const DISTRIBUTION_STATUSES: DistributionStatus[] = [...DISTRIBUTION_STATUS_VALUES];
+
+export const CONTENT_METRIC_SOURCE_VALUES = [
+  'manual',
+  'mcp_pull',
+  'scheduled_sync',
+] as const;
+export type ContentMetricSource = typeof CONTENT_METRIC_SOURCE_VALUES[number];
+export const CONTENT_METRIC_SOURCES: ContentMetricSource[] = [...CONTENT_METRIC_SOURCE_VALUES];
+
+export const CONTEXT_UPDATE_SOURCE_VALUES = ['manual', 'ai_proposed'] as const;
+export type ContextUpdateSource = typeof CONTEXT_UPDATE_SOURCE_VALUES[number];
+export const CONTEXT_UPDATE_SOURCES: ContextUpdateSource[] = [...CONTEXT_UPDATE_SOURCE_VALUES];
+
+export function isContentType(value: unknown): value is ContentType {
+  return isValueOf(value, CONTENT_TYPE_VALUES);
+}
+
+export function isContentStatus(value: unknown): value is ContentStatus {
+  return isValueOf(value, CONTENT_STATUS_VALUES);
+}
+
+export function isDistributionChannel(value: unknown): value is DistributionChannel {
+  return isValueOf(value, DISTRIBUTION_CHANNEL_VALUES);
+}
+
+export function isDistributionStatus(value: unknown): value is DistributionStatus {
+  return isValueOf(value, DISTRIBUTION_STATUS_VALUES);
+}
+
+export function isContentMetricSource(value: unknown): value is ContentMetricSource {
+  return isValueOf(value, CONTENT_METRIC_SOURCE_VALUES);
+}
+
+export function isContextUpdateSource(value: unknown): value is ContextUpdateSource {
+  return isValueOf(value, CONTEXT_UPDATE_SOURCE_VALUES);
+}
 
 export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   blog_post: 'Blog post',
