@@ -28,6 +28,8 @@ yarn-error.log*
 # local env files
 .env
 .env*.local
+env.local
+.env-local
 
 # vercel
 .vercel
@@ -38,3 +40,10 @@ next-env.d.ts
 
 # polyscope
 .context/
+
+# subpackages
+mcp/node_modules
+mcp/package-lock.json
+
+# local tools / docs
+docs/

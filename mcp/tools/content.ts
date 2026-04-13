@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { prisma } from '@/lib/db';
 import {
   createContentPiece,
   updateContentPiece,
@@ -544,6 +545,32 @@ export function registerContentTools(server: McpServer) {
       } catch (err) {
         console.error('[quiver-mcp] get_content_calendar error:', err);
         return error(err instanceof Error ? err.message : 'Failed to get content calendar');
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // archive_content
+  // -----------------------------------------------------------------------
+  server.tool(
+    'archive_content',
+    "Archive a content piece. Accepts content ID, slug, or title partial match. Sets status to 'archived'. The piece remains in the database.",
+    {
+      content_id: z.string().optional().describe('Content piece ID'),
+      slug: z.string().optional().describe('Content piece slug'),
+      title: z.string().optional().describe('Content piece title (case-insensitive partial match)'),
+    },
+    async (args) => {
+      try {
+        const piece = await resolveContentPiece(args.content_id, args.slug, args.title);
+        if (!piece) {
+          return error('Content piece not found.');
+        }
+        await prisma.contentPiece.update({ where: { id: piece.id }, data: { status: 'archived' } });
+        return text(`Archived content piece '${piece.title}' (slug: ${piece.slug ?? 'none'}).`);
+      } catch (err) {
+        console.error('[quiver-mcp] archive_content error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to archive content');
       }
     }
   );

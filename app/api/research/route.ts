@@ -98,6 +98,7 @@ export async function POST(request: Request) {
     contactStage: entry.contactStage,
     rawNotes: entry.rawNotes,
     campaignId: entry.campaignId,
+    sentimentLocked: entry.sentimentLocked,
   }));
 
   return NextResponse.json({ entry, processing: true }, { status: 201 });

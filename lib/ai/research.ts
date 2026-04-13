@@ -28,6 +28,7 @@ import { sendMessage } from '@/lib/ai/client';
 import { getActiveContext } from '@/lib/db/context';
 import {
   updateResearchEntry,
+  updateResearchEntrySentimentConditional,
   createResearchQuotes,
 } from '@/lib/db/research';
 import { createPerformanceLog } from '@/lib/db/performance';
@@ -47,6 +48,7 @@ interface ResearchEntryInput {
   contactStage?: string | null;
   rawNotes: string;
   campaignId?: string | null;
+  sentimentLocked?: boolean;
 }
 
 interface HypothesisSignalResult {
@@ -145,13 +147,15 @@ export async function processResearchEntry(
       return safeDefaults;
     }
 
-    // 6. Apply results to DB
+    // 6. Apply results to DB — sentiment is written atomically via
+    //    updateResearchEntrySentimentConditional (WHERE sentimentLocked=false)
+    //    so a concurrent manual lock always wins regardless of timing.
     await updateResearchEntry(entry.id, {
       summary: parsed.summary,
       themes: parsed.themes,
-      sentiment: parsed.sentiment,
       hypothesisSignals: parsed.hypothesisSignals,
     });
+    await updateResearchEntrySentimentConditional(entry.id, parsed.sentiment);
 
     await createResearchQuotes(
       parsed.quotes.map((q) => ({
@@ -205,9 +209,9 @@ async function applyDefaults(
   await updateResearchEntry(entryId, {
     summary: defaults.summary,
     themes: defaults.themes,
-    sentiment: defaults.sentiment,
     hypothesisSignals: defaults.hypothesisSignals,
   });
+  await updateResearchEntrySentimentConditional(entryId, defaults.sentiment);
 }
 
 function buildSystemPrompt(context: {

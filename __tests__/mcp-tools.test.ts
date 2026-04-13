@@ -1,5 +1,5 @@
 /**
- * Tests for MCP tool registration — verifies all 23 tools are registered
+ * Tests for MCP tool registration — verifies all 24 tools are registered
  * with correct names and that the server builds without errors.
  *
  * Does NOT test database interactions (those are thin wrappers around
@@ -36,7 +36,7 @@ vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => {
   return { McpServer: MockMcpServer };
 });
 
-// The expected complete list of 23 MCP tools from the issue spec
+// The expected complete list of 24 MCP tools from the issue spec
 const EXPECTED_TOOLS = [
   // Context tools (5)
   'get_context',
@@ -50,12 +50,13 @@ const EXPECTED_TOOLS = [
   'create_campaign',
   'update_campaign',
   'update_campaign_status',
-  // Artifact tools (5)
+  // Artifact tools (6)
   'list_artifacts',
   'get_artifact',
   'save_artifact',
   'update_artifact',
   'update_artifact_status',
+  'archive_artifact',
   // Session tools (2)
   'list_sessions',
   'get_session',
@@ -91,8 +92,8 @@ describe('MCP tool registration', () => {
     registerWorkspaceTools(server);
   });
 
-  it('registers exactly 23 tools', () => {
-    expect(registeredTools).toHaveLength(23);
+  it('registers exactly 24 tools', () => {
+    expect(registeredTools).toHaveLength(24);
   });
 
   it('registers all expected tools', () => {
