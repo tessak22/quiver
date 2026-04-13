@@ -153,6 +153,18 @@ export async function deleteResearchEntry(id: string) {
   });
 }
 
+// Atomically write AI-derived sentiment only when not manually locked.
+// Uses updateMany with WHERE sentimentLocked=false so no separate read is needed.
+export async function updateResearchEntrySentimentConditional(
+  id: string,
+  sentiment: string
+): Promise<void> {
+  await prisma.researchEntry.updateMany({
+    where: { id, sentimentLocked: false },
+    data: { sentiment },
+  });
+}
+
 // -------------------------------------------------------------------------
 // Research Quotes
 // -------------------------------------------------------------------------

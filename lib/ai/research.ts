@@ -28,8 +28,8 @@ import { sendMessage } from '@/lib/ai/client';
 import { getActiveContext } from '@/lib/db/context';
 import {
   updateResearchEntry,
+  updateResearchEntrySentimentConditional,
   createResearchQuotes,
-  getResearchEntry,
 } from '@/lib/db/research';
 import { createPerformanceLog } from '@/lib/db/performance';
 import { getDefaultCampaign } from '@/lib/db/campaigns';
@@ -147,15 +147,15 @@ export async function processResearchEntry(
       return safeDefaults;
     }
 
-    // 6. Apply results to DB — re-fetch sentimentLocked to avoid a race where
-    //    update_research_entry locks sentiment after AI processing started.
-    const freshEntry = await getResearchEntry(entry.id);
+    // 6. Apply results to DB — sentiment is written atomically via
+    //    updateResearchEntrySentimentConditional (WHERE sentimentLocked=false)
+    //    so a concurrent manual lock always wins regardless of timing.
     await updateResearchEntry(entry.id, {
       summary: parsed.summary,
       themes: parsed.themes,
-      sentiment: freshEntry?.sentimentLocked ? undefined : parsed.sentiment,
       hypothesisSignals: parsed.hypothesisSignals,
     });
+    await updateResearchEntrySentimentConditional(entry.id, parsed.sentiment);
 
     await createResearchQuotes(
       parsed.quotes.map((q) => ({
@@ -206,13 +206,12 @@ async function applyDefaults(
   entryId: string,
   defaults: AIProcessingResult
 ): Promise<void> {
-  const entry = await getResearchEntry(entryId);
   await updateResearchEntry(entryId, {
     summary: defaults.summary,
     themes: defaults.themes,
-    sentiment: entry?.sentimentLocked ? undefined : defaults.sentiment,
     hypothesisSignals: defaults.hypothesisSignals,
   });
+  await updateResearchEntrySentimentConditional(entryId, defaults.sentiment);
 }
 
 function buildSystemPrompt(context: {

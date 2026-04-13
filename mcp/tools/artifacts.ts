@@ -161,7 +161,7 @@ export function registerArtifactTools(server: McpServer) {
         );
 
         if (content && content.length > 50000) {
-          return text(JSON.stringify({
+          return error(JSON.stringify({
             error: 'content_too_large',
             message: `Content exceeds 50,000 character limit. Current length: ${content.length.toLocaleString()}. Split into multiple artifacts or shorten.`,
             current_length: content.length,
