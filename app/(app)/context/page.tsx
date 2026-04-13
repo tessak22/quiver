@@ -959,7 +959,7 @@ export default function ContextEditorPage() {
     if (trimmed.startsWith('{')) {
       try {
         const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        return {
+        const result: ContextFormData = {
           positioningStatement: typeof parsed.positioningStatement === 'string' ? parsed.positioningStatement : '',
           icpDefinition: typeof parsed.icpDefinition === 'string' ? parsed.icpDefinition : (parsed.icpDefinition != null ? JSON.stringify(parsed.icpDefinition, null, 2) : ''),
           messagingPillars: typeof parsed.messagingPillars === 'string' ? parsed.messagingPillars : (parsed.messagingPillars != null ? JSON.stringify(parsed.messagingPillars, null, 2) : ''),
@@ -971,6 +971,10 @@ export default function ContextEditorPage() {
           wordsToUse: parseStringArray(parsed.wordsToUse),
           wordsToAvoid: parseStringArray(parsed.wordsToAvoid),
         };
+        const hasContent = Object.values(result).some((v) =>
+          Array.isArray(v) ? v.length > 0 : v !== ''
+        );
+        return hasContent ? result : null;
       } catch {
         return null;
       }
@@ -989,7 +993,7 @@ export default function ContextEditorPage() {
 
       if (heading === 'positioning') {
         result.positioningStatement = content;
-      } else if (heading === 'target audience & icp') {
+      } else if (heading === 'target audience & icp' || heading === 'target audience and icp') {
         result.icpDefinition = content;
       } else if (heading === 'messaging pillars') {
         result.messagingPillars = content;
@@ -1033,7 +1037,6 @@ export default function ContextEditorPage() {
     }
     setForm(parsed);
     setIsDirty(true);
-    setImportText('');
     setImportDialogOpen(false);
   }
 

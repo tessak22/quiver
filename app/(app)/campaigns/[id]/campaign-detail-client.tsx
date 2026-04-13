@@ -169,7 +169,7 @@ const ARTIFACT_STATUS_COLORS: Record<ArtifactStatus, string> = {
 };
 
 const CONTENT_STATUS_COLORS: Record<ContentStatus, string> = {
-  draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  draft: 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200',
   review: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
   approved: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
   published: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
@@ -422,17 +422,23 @@ function ArtifactsTab({ campaignId }: { campaignId: string }) {
 function ContentTab({ campaignId }: { campaignId: string }) {
   const [content, setContent] = useState<ContentRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     async function fetchContent() {
       setLoading(true);
+      setFetchError(null);
       try {
         const res = await fetch(`/api/content?campaignId=${campaignId}`);
         if (res.ok) {
           const data: { contentPieces: ContentRecord[] } = await res.json();
           setContent(data.contentPieces);
+        } else {
+          setFetchError('Failed to load content');
         }
+      } catch {
+        setFetchError('Failed to load content');
       } finally {
         setLoading(false);
       }
@@ -442,6 +448,10 @@ function ContentTab({ campaignId }: { campaignId: string }) {
 
   if (loading) {
     return <p className="text-muted-foreground py-8 text-center">Loading content...</p>;
+  }
+
+  if (fetchError) {
+    return <p className="text-sm text-destructive py-8 text-center">{fetchError}</p>;
   }
 
   const activeContent = content.filter((c) => c.status !== 'archived');
