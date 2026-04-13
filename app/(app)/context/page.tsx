@@ -953,78 +953,29 @@ export default function ContextEditorPage() {
 
   // ------ Import ------
 
-  function parseImport(text: string): ContextFormData | null {
-    const trimmed = text.trim();
-
-    // Try JSON first
-    if (trimmed.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        const result: ContextFormData = {
-          positioningStatement: typeof parsed.positioningStatement === 'string' ? parsed.positioningStatement : '',
-          icpDefinition: typeof parsed.icpDefinition === 'string' ? parsed.icpDefinition : (parsed.icpDefinition != null ? JSON.stringify(parsed.icpDefinition, null, 2) : ''),
-          messagingPillars: typeof parsed.messagingPillars === 'string' ? parsed.messagingPillars : (parsed.messagingPillars != null ? JSON.stringify(parsed.messagingPillars, null, 2) : ''),
-          competitiveLandscape: parseCompetitors(parsed.competitiveLandscape),
-          customerLanguage: typeof parsed.customerLanguage === 'string' ? parsed.customerLanguage : (parsed.customerLanguage != null ? JSON.stringify(parsed.customerLanguage, null, 2) : ''),
-          proofPoints: typeof parsed.proofPoints === 'string' ? parsed.proofPoints : (parsed.proofPoints != null ? JSON.stringify(parsed.proofPoints, null, 2) : ''),
-          activeHypotheses: typeof parsed.activeHypotheses === 'string' ? parsed.activeHypotheses : (parsed.activeHypotheses != null ? JSON.stringify(parsed.activeHypotheses, null, 2) : ''),
-          brandVoice: typeof parsed.brandVoice === 'string' ? parsed.brandVoice : '',
-          wordsToUse: parseStringArray(parsed.wordsToUse),
-          wordsToAvoid: parseStringArray(parsed.wordsToAvoid),
-        };
-        const hasContent = Object.values(result).some((v) =>
-          Array.isArray(v) ? v.length > 0 : v !== ''
-        );
-        return hasContent ? result : null;
-      } catch {
-        return null;
-      }
+  // JSON-only import: used for { } prefixed input. Markdown/prose goes through the AI route.
+  function parseJsonImport(text: string): ContextFormData | null {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const result: ContextFormData = {
+        positioningStatement: typeof parsed.positioningStatement === 'string' ? parsed.positioningStatement : '',
+        icpDefinition: typeof parsed.icpDefinition === 'string' ? parsed.icpDefinition : (parsed.icpDefinition != null ? JSON.stringify(parsed.icpDefinition, null, 2) : ''),
+        messagingPillars: typeof parsed.messagingPillars === 'string' ? parsed.messagingPillars : (parsed.messagingPillars != null ? JSON.stringify(parsed.messagingPillars, null, 2) : ''),
+        competitiveLandscape: parseCompetitors(parsed.competitiveLandscape),
+        customerLanguage: typeof parsed.customerLanguage === 'string' ? parsed.customerLanguage : (parsed.customerLanguage != null ? JSON.stringify(parsed.customerLanguage, null, 2) : ''),
+        proofPoints: typeof parsed.proofPoints === 'string' ? parsed.proofPoints : (parsed.proofPoints != null ? JSON.stringify(parsed.proofPoints, null, 2) : ''),
+        activeHypotheses: typeof parsed.activeHypotheses === 'string' ? parsed.activeHypotheses : (parsed.activeHypotheses != null ? JSON.stringify(parsed.activeHypotheses, null, 2) : ''),
+        brandVoice: typeof parsed.brandVoice === 'string' ? parsed.brandVoice : '',
+        wordsToUse: parseStringArray(parsed.wordsToUse),
+        wordsToAvoid: parseStringArray(parsed.wordsToAvoid),
+      };
+      const hasContent = Object.values(result).some((v) =>
+        Array.isArray(v) ? v.length > 0 : v !== ''
+      );
+      return hasContent ? result : null;
+    } catch {
+      return null;
     }
-
-    // Try markdown
-    const result: ContextFormData = { ...EMPTY_FORM };
-    const sections = trimmed.split(/^## /m);
-
-    for (const section of sections.slice(1)) {
-      const newlineIdx = section.indexOf('\n');
-      if (newlineIdx === -1) continue;
-      const heading = section.slice(0, newlineIdx).trim().toLowerCase();
-      const content = section.slice(newlineIdx + 1).trim();
-      if (!content) continue;
-
-      if (heading === 'positioning') {
-        result.positioningStatement = content;
-      } else if (heading === 'target audience & icp' || heading === 'target audience and icp') {
-        result.icpDefinition = content;
-      } else if (heading === 'messaging pillars') {
-        result.messagingPillars = content;
-      } else if (heading === 'competitive landscape') {
-        const competitors: CompetitorEntry[] = [];
-        for (const line of content.split('\n')) {
-          const match = line.match(/^-\s+\*\*(.+?)\*\*:\s*(.*)$/);
-          if (match) competitors.push({ name: match[1].trim(), notes: match[2].trim() });
-        }
-        if (competitors.length > 0) result.competitiveLandscape = competitors;
-      } else if (heading === 'customer language') {
-        result.customerLanguage = content;
-      } else if (heading === 'proof points') {
-        result.proofPoints = content;
-      } else if (heading === 'active hypotheses') {
-        result.activeHypotheses = content;
-      } else if (heading === 'brand voice') {
-        result.brandVoice = content;
-      } else if (heading === 'words to use') {
-        result.wordsToUse = content.split(',').map((s) => s.trim()).filter(Boolean);
-      } else if (heading === 'words to avoid') {
-        result.wordsToAvoid = content.split(',').map((s) => s.trim()).filter(Boolean);
-      }
-    }
-
-    // Only accept the markdown parse if at least one field was populated
-    const hasContent = Object.values(result).some((v) =>
-      Array.isArray(v) ? v.length > 0 : v !== ''
-    );
-    return hasContent ? result : null;
   }
 
   async function handleImport() {
@@ -1033,7 +984,7 @@ export default function ContextEditorPage() {
 
     // JSON: parse locally — fast, no AI cost
     if (trimmed.startsWith('{')) {
-      const parsed = parseImport(trimmed);
+      const parsed = parseJsonImport(trimmed);
       if (!parsed) {
         setImportParseError(
           'Could not parse the JSON. Make sure it is a valid JSON object with matching field names.'
@@ -1042,6 +993,7 @@ export default function ContextEditorPage() {
       }
       setForm(parsed);
       setIsDirty(true);
+      setImportText('');
       setImportDialogOpen(false);
       return;
     }
@@ -1065,6 +1017,7 @@ export default function ContextEditorPage() {
       }
       setForm(body.data);
       setIsDirty(true);
+      setImportText('');
       setImportDialogOpen(false);
     } catch {
       setImportParseError('Import failed. Check your connection and try again.');

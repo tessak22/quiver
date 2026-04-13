@@ -20,24 +20,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'text is required' }, { status: 400 });
   }
 
+  const MAX_IMPORT_CHARS = 20_000;
+  if (text.length > MAX_IMPORT_CHARS) {
+    return NextResponse.json(
+      { error: `Document too large. Please paste no more than ${MAX_IMPORT_CHARS.toLocaleString()} characters.` },
+      { status: 400 }
+    );
+  }
+
   const result = await sendMessage({
     system: `You are a product marketing data extraction assistant.
 
 Your job is to read a document — in any format (markdown, prose, bullet lists, slides, etc.) — and extract product marketing context fields.
 
-Return ONLY valid JSON matching this exact schema — no markdown fences, no explanation:
+Return ONLY valid JSON — no markdown fences, no preamble, no explanation. Start your response with { and end with }.
 
+Example output structure (use JSON null for any field not found in the document — never the string "null"):
 {
-  "positioningStatement": "string or null",
-  "icpDefinition": "string or null",
-  "messagingPillars": "string or null",
-  "competitiveLandscape": [{ "name": "string", "notes": "string" }],
-  "customerLanguage": "string or null",
-  "proofPoints": "string or null",
-  "activeHypotheses": "string or null",
-  "brandVoice": "string or null",
-  "wordsToUse": ["string"],
-  "wordsToAvoid": ["string"]
+  "positioningStatement": "We help developer tools teams ship faster by...",
+  "icpDefinition": "Senior engineers at B2B SaaS companies with 50-500 employees...",
+  "messagingPillars": null,
+  "competitiveLandscape": [{ "name": "Competitor A", "notes": "Focuses on enterprise..." }],
+  "customerLanguage": null,
+  "proofPoints": null,
+  "activeHypotheses": null,
+  "brandVoice": null,
+  "wordsToUse": ["ship", "fast", "reliable"],
+  "wordsToAvoid": []
 }
 
 Field guidance:
@@ -52,8 +61,7 @@ Field guidance:
 - wordsToUse: Specific words or phrases to include in marketing copy.
 - wordsToAvoid: Specific words or phrases to avoid.
 
-If a field cannot be found in the document, set it to null (or [] for array fields).
-Do not invent content — only extract what is present in the document.`,
+Do not invent content — only extract what is present in the document. Use null for missing fields.`,
     messages: [
       {
         role: 'user',
@@ -68,12 +76,12 @@ Do not invent content — only extract what is present in the document.`,
   }
 
   try {
-    // Strip markdown code fences if the model wrapped the JSON anyway
-    const raw = result.content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    // Extract JSON from response — handles fenced blocks, preambles, trailing text
+    const fenced = result.content.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
+    const raw = (fenced ? fenced[1] : result.content).trim();
     const extracted = JSON.parse(raw) as Record<string, unknown>;
 
-    return NextResponse.json({
-      data: {
+    const data = {
         positioningStatement: typeof extracted.positioningStatement === 'string' ? extracted.positioningStatement : '',
         icpDefinition: typeof extracted.icpDefinition === 'string' ? extracted.icpDefinition : '',
         messagingPillars: typeof extracted.messagingPillars === 'string' ? extracted.messagingPillars : '',
@@ -97,8 +105,19 @@ Do not invent content — only extract what is present in the document.`,
         wordsToAvoid: Array.isArray(extracted.wordsToAvoid)
           ? (extracted.wordsToAvoid as unknown[]).filter((w): w is string => typeof w === 'string')
           : [],
-      },
-    });
+    };
+
+    const hasContent = Object.values(data).some((v) =>
+      Array.isArray(v) ? v.length > 0 : v !== ''
+    );
+    if (!hasContent) {
+      return NextResponse.json(
+        { error: 'No recognisable marketing context found in this document. Try a more specific document or fill in the fields directly.' },
+        { status: 422 }
+      );
+    }
+
+    return NextResponse.json({ data });
   } catch (err) {
     return NextResponse.json(
       { error: safeErrorMessage(err, 'AI returned unparseable output') },
