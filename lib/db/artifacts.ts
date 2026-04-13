@@ -201,7 +201,8 @@ export async function transitionArtifactStatus(
       },
     });
 
-    await createNotificationsForAllMembers({
+    // Fire-and-forget — must not block the MCP tool response
+    void createNotificationsForAllMembers({
       type: 'artifact_live',
       title: `"${artifact.title}" is live`,
       body: `This artifact went live. Log performance results in 14 days on ${reminderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.`,

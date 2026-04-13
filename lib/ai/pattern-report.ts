@@ -144,7 +144,7 @@ export async function generatePatternReport(): Promise<PatternReportResult> {
       });
       proposalCount = proposals.length;
 
-      await createNotificationsForAllMembers({
+      void createNotificationsForAllMembers({
         type: 'context_proposal',
         title: `${proposals.length} context update${proposals.length > 1 ? 's' : ''} proposed`,
         body: `The monthly pattern report identified ${proposals.length} suggested update${proposals.length > 1 ? 's' : ''} to your positioning, ICP, or hypotheses.`,

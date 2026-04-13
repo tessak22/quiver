@@ -186,7 +186,7 @@ export async function processResearchEntry(
         });
 
         const count = parsed.contextProposals.length;
-        await createNotificationsForAllMembers({
+        void createNotificationsForAllMembers({
           type: 'context_proposal',
           title: `${count} context update${count > 1 ? 's' : ''} proposed`,
           body: `Research entry "${entry.title}" identified ${count} suggested update${count > 1 ? 's' : ''} to your positioning, ICP, or hypotheses.`,
