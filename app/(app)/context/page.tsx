@@ -510,6 +510,7 @@ export default function ContextEditorPage() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [importParseError, setImportParseError] = useState<string | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
 
   // Team members for resolving updatedBy IDs to names
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
@@ -1026,18 +1027,50 @@ export default function ContextEditorPage() {
     return hasContent ? result : null;
   }
 
-  function handleImport() {
+  async function handleImport() {
     setImportParseError(null);
-    const parsed = parseImport(importText);
-    if (!parsed) {
-      setImportParseError(
-        'Could not parse the input. Paste a Quiver-exported JSON or Markdown file, or a JSON object with the matching field names.'
-      );
+    const trimmed = importText.trim();
+
+    // JSON: parse locally — fast, no AI cost
+    if (trimmed.startsWith('{')) {
+      const parsed = parseImport(trimmed);
+      if (!parsed) {
+        setImportParseError(
+          'Could not parse the JSON. Make sure it is a valid JSON object with matching field names.'
+        );
+        return;
+      }
+      setForm(parsed);
+      setIsDirty(true);
+      setImportDialogOpen(false);
       return;
     }
-    setForm(parsed);
-    setIsDirty(true);
-    setImportDialogOpen(false);
+
+    // Markdown or prose: send through AI extraction
+    setImportLoading(true);
+    try {
+      const res = await fetch('/api/context/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: trimmed }),
+      });
+      const body = await res.json() as { data?: ContextFormData; error?: string };
+      if (!res.ok || body.error) {
+        setImportParseError(body.error ?? 'Import failed. Please try again.');
+        return;
+      }
+      if (!body.data) {
+        setImportParseError('No data returned from import.');
+        return;
+      }
+      setForm(body.data);
+      setIsDirty(true);
+      setImportDialogOpen(false);
+    } catch {
+      setImportParseError('Import failed. Check your connection and try again.');
+    } finally {
+      setImportLoading(false);
+    }
   }
 
   // ------ Render helpers ------
@@ -1612,16 +1645,19 @@ export default function ContextEditorPage() {
           <DialogHeader>
             <DialogTitle>Import Context</DialogTitle>
             <DialogDescription>
-              Paste a Quiver-exported Markdown or JSON file, or any JSON with matching field names.
-              This will replace the current form — you&apos;ll still need to save after importing.
+              Paste any document — your own markdown, a strategy doc, a Notion export, a competitor
+              analysis, whatever you have. AI will extract and map the fields automatically.
+              JSON exported from Quiver is parsed instantly without an AI call.
+              Fields will replace the current form — you&apos;ll still need to save after importing.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <Textarea
               className="font-mono text-xs min-h-[280px]"
-              placeholder={`Paste JSON or Markdown here…\n\nJSON example:\n{\n  "positioningStatement": "...",\n  "icpDefinition": "...",\n  "brandVoice": "..."\n}\n\nMarkdown example:\n## Positioning\nWe help...\n\n## Brand Voice\nDirect, clear...`}
+              placeholder="Paste any document here — markdown, prose, bullet lists, a Notion export…"
               value={importText}
+              disabled={importLoading}
               onChange={(e) => {
                 setImportText(e.target.value);
                 setImportParseError(null);
@@ -1630,14 +1666,17 @@ export default function ContextEditorPage() {
             {importParseError && (
               <p className="text-sm text-destructive">{importParseError}</p>
             )}
+            {importLoading && (
+              <p className="text-sm text-muted-foreground">Extracting fields with AI…</p>
+            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+            <Button variant="outline" disabled={importLoading} onClick={() => setImportDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleImport} disabled={!importText.trim()}>
-              Import
+            <Button onClick={handleImport} disabled={!importText.trim() || importLoading}>
+              {importLoading ? 'Importing…' : 'Import'}
             </Button>
           </DialogFooter>
         </DialogContent>
