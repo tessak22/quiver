@@ -160,6 +160,10 @@ export function registerArtifactTools(server: McpServer) {
           { fallbackToDefault: true }
         );
 
+        if (content && content.length > 50000) {
+          return error(`Content exceeds 50,000 character limit. Current length: ${content.length.toLocaleString()}. Split into multiple artifacts or shorten.`);
+        }
+
         const artifact = await createArtifact({
           title,
           type,
@@ -236,6 +240,32 @@ export function registerArtifactTools(server: McpServer) {
         console.error('[quiver-mcp] update_artifact_status error:', err);
         return error(
           err instanceof Error ? err.message : 'Failed to update artifact status'
+        );
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // archive_artifact
+  // -----------------------------------------------------------------------
+  server.tool(
+    'archive_artifact',
+    "Archive an artifact by ID. Sets status to 'archived'. The artifact remains in the database and can be filtered out of list results.",
+    {
+      artifact_id: z.string().describe('Artifact ID'),
+    },
+    async ({ artifact_id }) => {
+      try {
+        const artifact = await prisma.artifact.findUnique({ where: { id: artifact_id } });
+        if (!artifact) {
+          return error(`Artifact ${artifact_id} not found.`);
+        }
+        await prisma.artifact.update({ where: { id: artifact_id }, data: { status: 'archived' } });
+        return text(`Archived artifact '${artifact.title}' (${artifact_id}).`);
+      } catch (err) {
+        console.error('[quiver-mcp] archive_artifact error:', err);
+        return error(
+          err instanceof Error ? err.message : 'Failed to archive artifact'
         );
       }
     }

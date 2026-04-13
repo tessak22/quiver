@@ -72,8 +72,10 @@ export async function updateResearchEntry(
     summary?: string;
     themes?: string[];
     sentiment?: string;
+    sentimentLocked?: boolean;
     productSignal?: boolean;
     productNote?: string;
+    rawNotes?: string;
     hypothesisSignals?: unknown;
     campaignId?: string;
   }
@@ -89,8 +91,10 @@ export async function updateResearchEntry(
   if (data.summary !== undefined) updateData.summary = data.summary;
   if (data.themes !== undefined) updateData.themes = data.themes;
   if (data.sentiment !== undefined) updateData.sentiment = data.sentiment;
+  if (data.sentimentLocked !== undefined) updateData.sentimentLocked = data.sentimentLocked;
   if (data.productSignal !== undefined) updateData.productSignal = data.productSignal;
   if (data.productNote !== undefined) updateData.productNote = data.productNote;
+  if (data.rawNotes !== undefined) updateData.rawNotes = data.rawNotes;
   if (data.campaignId !== undefined) updateData.campaignId = data.campaignId;
   if (data.hypothesisSignals !== undefined) {
     updateData.hypothesisSignals = data.hypothesisSignals as Prisma.InputJsonValue;

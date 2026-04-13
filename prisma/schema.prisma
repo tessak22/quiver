@@ -161,6 +161,7 @@ model ResearchEntry {
   sentiment         String? // positive | negative | neutral | mixed
   productSignal     Boolean   @default(false)
   productNote       String?
+  sentimentLocked   Boolean   @default(false)
   hypothesisSignals Json? // stored after AI processing
   campaignId        String?
   createdBy         String

@@ -47,6 +47,7 @@ interface ResearchEntryInput {
   contactStage?: string | null;
   rawNotes: string;
   campaignId?: string | null;
+  sentimentLocked?: boolean;
 }
 
 interface HypothesisSignalResult {
@@ -145,11 +146,11 @@ export async function processResearchEntry(
       return safeDefaults;
     }
 
-    // 6. Apply results to DB
+    // 6. Apply results to DB (skip sentiment if manually locked)
     await updateResearchEntry(entry.id, {
       summary: parsed.summary,
       themes: parsed.themes,
-      sentiment: parsed.sentiment,
+      sentiment: entry.sentimentLocked ? undefined : parsed.sentiment,
       hypothesisSignals: parsed.hypothesisSignals,
     });
 

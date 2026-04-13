@@ -202,6 +202,7 @@ export function registerResearchTools(server: McpServer) {
           contactStage: entry.contactStage,
           rawNotes: entry.rawNotes,
           campaignId: entry.campaignId,
+          sentimentLocked: entry.sentimentLocked,
         });
 
         return text(
@@ -360,6 +361,202 @@ export function registerResearchTools(server: McpServer) {
       } catch (err) {
         console.error('[quiver-mcp] get_linear_payload error:', err);
         return error(err instanceof Error ? err.message : 'Failed to generate Linear payload');
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // update_research_entry
+  // -----------------------------------------------------------------------
+  server.tool(
+    'update_research_entry',
+    'Update fields on an existing research entry. Only fields that are provided will be updated. WARNING: raw_notes REPLACES the existing notes entirely — it does not append. If sentiment is provided, it will be written and sentimentLocked will be set to true, preventing AI post-processing from overwriting it.',
+    {
+      id: z.string().describe('Research entry ID'),
+      title: z.string().optional().describe('New title'),
+      research_date: z.string().optional().describe('Research date (ISO 8601, e.g. 2026-04-11)'),
+      contact_name: z.string().optional().describe('Contact person name'),
+      contact_company: z.string().optional().describe('Contact company'),
+      contact_segment: z.string().optional().describe('ICP segment'),
+      contact_stage: z
+        .string()
+        .optional()
+        .describe('Contact stage: prospect, customer, churned, never_converted'),
+      sentiment: z
+        .string()
+        .optional()
+        .describe('Sentiment override: positive, negative, neutral, mixed. Sets sentimentLocked = true.'),
+      product_signal: z.boolean().optional().describe('Flag as product signal'),
+      product_note: z.string().optional().describe('Note for product team'),
+      source_type: z
+        .string()
+        .optional()
+        .describe('Source type: call, interview, survey, review, forum, support_ticket, social, common_room, other'),
+      raw_notes: z
+        .string()
+        .optional()
+        .describe('Raw research notes. REPLACES existing notes — does not append.'),
+    },
+    async (args) => {
+      try {
+        const existing = await prisma.researchEntry.findUnique({
+          where: { id: args.id },
+          select: { id: true, title: true },
+        });
+        if (!existing) {
+          return error(`Research entry '${args.id}' not found.`);
+        }
+
+        const updateData: Parameters<typeof prisma.researchEntry.update>[0]['data'] = {};
+
+        if (args.title !== undefined) updateData.title = args.title;
+        if (args.research_date !== undefined) updateData.researchDate = parseDate(args.research_date);
+        if (args.contact_name !== undefined) updateData.contactName = args.contact_name;
+        if (args.contact_company !== undefined) updateData.contactCompany = args.contact_company;
+        if (args.contact_segment !== undefined) updateData.contactSegment = args.contact_segment;
+        if (args.contact_stage !== undefined) updateData.contactStage = args.contact_stage;
+        if (args.sentiment !== undefined) {
+          updateData.sentiment = args.sentiment;
+          updateData.sentimentLocked = true;
+        }
+        if (args.product_signal !== undefined) updateData.productSignal = args.product_signal;
+        if (args.product_note !== undefined) updateData.productNote = args.product_note;
+        if (args.source_type !== undefined) updateData.sourceType = args.source_type;
+        if (args.raw_notes !== undefined) updateData.rawNotes = args.raw_notes;
+
+        const updated = await prisma.researchEntry.update({
+          where: { id: args.id },
+          data: updateData,
+          select: {
+            id: true,
+            title: true,
+            sourceType: true,
+            sentiment: true,
+            sentimentLocked: true,
+            productSignal: true,
+            contactName: true,
+            contactCompany: true,
+            updatedAt: true,
+          },
+        });
+
+        return text(JSON.stringify(updated, null, 2));
+      } catch (err) {
+        console.error('[quiver-mcp] update_research_entry error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to update research entry');
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // delete_research_entry
+  // -----------------------------------------------------------------------
+  server.tool(
+    'delete_research_entry',
+    'Permanently delete a research entry and all its associated quotes. This action cannot be undone.',
+    {
+      id: z.string().describe('Research entry ID to delete'),
+    },
+    async (args) => {
+      try {
+        const existing = await prisma.researchEntry.findUnique({
+          where: { id: args.id },
+          select: { id: true, title: true },
+        });
+        if (!existing) {
+          return error(`Research entry '${args.id}' not found.`);
+        }
+
+        const quoteCount = await prisma.researchQuote.count({
+          where: { researchEntryId: args.id },
+        });
+
+        await prisma.researchEntry.delete({ where: { id: args.id } });
+
+        return text(
+          `Deleted research entry '${existing.title}' and ${quoteCount} associated quote${quoteCount === 1 ? '' : 's'}.`
+        );
+      } catch (err) {
+        console.error('[quiver-mcp] delete_research_entry error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to delete research entry');
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // update_quote
+  // -----------------------------------------------------------------------
+  server.tool(
+    'update_quote',
+    'Update a research quote. Only fields that are provided will be updated.',
+    {
+      quote_id: z.string().describe('Research quote ID'),
+      featured: z.boolean().optional().describe('Mark or unmark as featured (injects into AI session context)'),
+      theme: z
+        .string()
+        .optional()
+        .describe('Theme: pricing, onboarding, competitor_mention, feature_gap, messaging, icp_fit, other'),
+    },
+    async (args) => {
+      try {
+        const existing = await prisma.researchQuote.findUnique({
+          where: { id: args.quote_id },
+          select: { id: true, quote: true },
+        });
+        if (!existing) {
+          return error(`Research quote '${args.quote_id}' not found.`);
+        }
+
+        const updateData: Parameters<typeof prisma.researchQuote.update>[0]['data'] = {};
+
+        if (args.featured !== undefined) updateData.isFeatured = args.featured;
+        if (args.theme !== undefined) updateData.theme = args.theme;
+
+        const updated = await prisma.researchQuote.update({
+          where: { id: args.quote_id },
+          data: updateData,
+          select: { id: true, quote: true, theme: true, isFeatured: true },
+        });
+
+        const preview = updated.quote.slice(0, 100);
+        return text(
+          `Updated quote (${updated.id}): "${preview}${updated.quote.length > 100 ? '…' : ''}" — theme: ${updated.theme ?? 'none'}, featured: ${updated.isFeatured}`
+        );
+      } catch (err) {
+        console.error('[quiver-mcp] update_quote error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to update quote');
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // delete_quote
+  // -----------------------------------------------------------------------
+  server.tool(
+    'delete_quote',
+    'Permanently delete a research quote. This action cannot be undone.',
+    {
+      quote_id: z.string().describe('Research quote ID to delete'),
+    },
+    async (args) => {
+      try {
+        const existing = await prisma.researchQuote.findUnique({
+          where: { id: args.quote_id },
+          select: { id: true, quote: true },
+        });
+        if (!existing) {
+          return error(`Research quote '${args.quote_id}' not found.`);
+        }
+
+        await prisma.researchQuote.delete({ where: { id: args.quote_id } });
+
+        const preview = existing.quote.slice(0, 100);
+        return text(
+          `Deleted quote (${existing.id}): "${preview}${existing.quote.length > 100 ? '…' : ''}"`
+        );
+      } catch (err) {
+        console.error('[quiver-mcp] delete_quote error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to delete quote');
       }
     }
   );
