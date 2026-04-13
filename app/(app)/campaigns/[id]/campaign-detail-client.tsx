@@ -33,7 +33,10 @@ import type {
   CampaignPriority,
   SessionMode,
   ArtifactStatus,
+  ContentType,
+  ContentStatus,
 } from '@/types';
+import { CONTENT_TYPE_LABELS } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,6 +65,7 @@ export interface CampaignRecord {
     sessions: number;
     artifacts: number;
     performanceLogs: number;
+    contentPieces: number;
   };
 }
 
@@ -77,7 +81,7 @@ interface ArtifactRecord {
   id: string;
   title: string;
   type: string;
-  status: string;
+  status: ArtifactStatus;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -91,6 +95,16 @@ interface PerformanceLogRecord {
   recordedAt: Date | string;
   periodStart: Date | string | null;
   periodEnd: Date | string | null;
+}
+
+interface ContentRecord {
+  id: string;
+  title: string;
+  slug: string;
+  contentType: ContentType;
+  status: ContentStatus;
+  publishedAt: Date | string | null;
+  createdAt: Date | string;
 }
 
 interface CampaignDetailClientPageProps {
@@ -152,6 +166,26 @@ const ARTIFACT_STATUS_COLORS: Record<ArtifactStatus, string> = {
   approved: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
   live: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
   archived: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
+};
+
+const CONTENT_STATUS_COLORS: Record<ContentStatus, string> = {
+  draft: 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200',
+  review: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
+  approved: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  published: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  archived: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+};
+
+const CONTENT_TYPE_BADGE_COLORS: Record<ContentType, string> = {
+  blog_post: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  case_study: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+  landing_page: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  changelog: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+  newsletter: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
+  social_thread: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+  video_script: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  doc: 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200',
+  other: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
 };
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -276,6 +310,7 @@ function SessionsTab({ campaignId }: { campaignId: string }) {
 function ArtifactsTab({ campaignId }: { campaignId: string }) {
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     async function fetchArtifacts() {
@@ -297,6 +332,10 @@ function ArtifactsTab({ campaignId }: { campaignId: string }) {
     return <p className="text-muted-foreground py-8 text-center">Loading artifacts...</p>;
   }
 
+  const activeArtifacts = artifacts.filter((a) => a.status !== 'archived');
+  const archivedArtifacts = artifacts.filter((a) => a.status === 'archived');
+  const visibleArtifacts = showArchived ? artifacts : activeArtifacts;
+
   if (artifacts.length === 0) {
     return (
       <Card>
@@ -309,10 +348,30 @@ function ArtifactsTab({ campaignId }: { campaignId: string }) {
     );
   }
 
+  if (activeArtifacts.length === 0 && !showArchived) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            All artifacts have been archived.
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2 text-xs text-muted-foreground"
+            onClick={() => setShowArchived(true)}
+          >
+            Show {archivedArtifacts.length} archived
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-2">
-      {artifacts.map((artifact) => {
-        const artifactStatus = artifact.status as ArtifactStatus;
+      {visibleArtifacts.map((artifact) => {
+        const artifactStatus = artifact.status;
         return (
           <Link key={artifact.id} href={`/artifacts/${artifact.id}`} className="block">
             <Card className="transition-colors hover:bg-muted/50">
@@ -340,6 +399,144 @@ function ArtifactsTab({ campaignId }: { campaignId: string }) {
           </Link>
         );
       })}
+      {archivedArtifacts.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-xs text-muted-foreground"
+          onClick={() => setShowArchived((prev) => !prev)}
+        >
+          {showArchived
+            ? 'Hide archived'
+            : `Show ${archivedArtifacts.length} archived`}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Content Tab
+// ---------------------------------------------------------------------------
+
+function ContentTab({ campaignId }: { campaignId: string }) {
+  const [content, setContent] = useState<ContentRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+
+  useEffect(() => {
+    async function fetchContent() {
+      setLoading(true);
+      setFetchError(null);
+      try {
+        const res = await fetch(`/api/content?campaignId=${campaignId}`);
+        if (res.ok) {
+          const data: { contentPieces: ContentRecord[] } = await res.json();
+          setContent(data.contentPieces);
+        } else {
+          setFetchError('Failed to load content');
+        }
+      } catch {
+        setFetchError('Failed to load content');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchContent();
+  }, [campaignId]);
+
+  if (loading) {
+    return <p className="text-muted-foreground py-8 text-center">Loading content...</p>;
+  }
+
+  if (fetchError) {
+    return <p className="text-sm text-destructive py-8 text-center">{fetchError}</p>;
+  }
+
+  const activeContent = content.filter((c) => c.status !== 'archived');
+  const archivedContent = content.filter((c) => c.status === 'archived');
+  const visibleContent = showArchived ? content : activeContent;
+
+  if (content.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            No content linked to this campaign yet.
+          </p>
+          <Button asChild variant="outline" className="mt-3" size="sm">
+            <Link href="/content">Go to content library</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (activeContent.length === 0 && !showArchived) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+          <p className="text-sm text-muted-foreground">All content has been archived.</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2 text-xs text-muted-foreground"
+            onClick={() => setShowArchived(true)}
+          >
+            Show {archivedContent.length} archived
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {visibleContent.map((piece) => (
+        <Link key={piece.id} href={`/content/${piece.id}`} className="block">
+          <Card className="transition-colors hover:bg-muted/50">
+            <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      CONTENT_TYPE_BADGE_COLORS[piece.contentType] ?? ''
+                    }`}
+                  >
+                    {CONTENT_TYPE_LABELS[piece.contentType] ?? piece.contentType}
+                  </span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      CONTENT_STATUS_COLORS[piece.status] ?? ''
+                    }`}
+                  >
+                    {piece.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-medium truncate">{piece.title}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {piece.publishedAt
+                    ? `Published ${formatDate(piece.publishedAt)}`
+                    : `Created ${formatDateTime(piece.createdAt)}`}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      ))}
+      {archivedContent.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-xs text-muted-foreground"
+          onClick={() => setShowArchived((prev) => !prev)}
+        >
+          {showArchived
+            ? 'Hide archived'
+            : `Show ${archivedContent.length} archived`}
+        </Button>
+      )}
     </div>
   );
 }
@@ -483,7 +680,7 @@ export default function CampaignDetailClientPage({
   function getOwnerName(ownerId: string | null): string {
     if (!ownerId) return 'Unassigned';
     const member = teamMembers.find((m) => m.id === ownerId);
-    return member?.name ?? ownerId;
+    return member?.name ?? 'Unknown';
   }
 
   // Fetch campaign
@@ -786,6 +983,9 @@ export default function CampaignDetailClientPage({
           <TabsTrigger value="artifacts">
             Artifacts ({campaign._count.artifacts})
           </TabsTrigger>
+          <TabsTrigger value="content">
+            Content ({campaign._count.contentPieces})
+          </TabsTrigger>
           <TabsTrigger value="performance">
             Performance ({campaign._count.performanceLogs})
           </TabsTrigger>
@@ -797,6 +997,10 @@ export default function CampaignDetailClientPage({
 
         <TabsContent value="artifacts">
           <ArtifactsTab campaignId={campaignId} />
+        </TabsContent>
+
+        <TabsContent value="content">
+          <ContentTab campaignId={campaignId} />
         </TabsContent>
 
         <TabsContent value="performance">

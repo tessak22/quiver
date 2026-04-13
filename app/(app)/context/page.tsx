@@ -506,6 +506,12 @@ export default function ContextEditorPage() {
     isConsistent: boolean;
   } | null>(null);
 
+  // Import state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importParseError, setImportParseError] = useState<string | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+
   // Team members for resolving updatedBy IDs to names
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -524,8 +530,11 @@ export default function ContextEditorPage() {
 
   function resolveUserName(userId: string | null): string {
     if (!userId) return '';
+    if (userId === 'cron') return 'Automated';
+    if (userId === 'mcp') return 'MCP';
+    if (userId === 'research_ai') return 'AI';
     const member = teamMembers.find((m) => m.id === userId);
-    return member?.name ?? userId.substring(0, 8) + '...';
+    return member?.name ?? 'Unknown';
   }
 
   // ------ Data fetching ------
@@ -943,6 +952,81 @@ export default function ContextEditorPage() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  }
+
+  // ------ Import ------
+
+  // JSON-only import: used for { } prefixed input. Markdown/prose goes through the AI route.
+  function parseJsonImport(text: string): ContextFormData | null {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const result: ContextFormData = {
+        positioningStatement: typeof parsed.positioningStatement === 'string' ? parsed.positioningStatement : '',
+        icpDefinition: typeof parsed.icpDefinition === 'string' ? parsed.icpDefinition : (parsed.icpDefinition != null ? JSON.stringify(parsed.icpDefinition, null, 2) : ''),
+        messagingPillars: typeof parsed.messagingPillars === 'string' ? parsed.messagingPillars : (parsed.messagingPillars != null ? JSON.stringify(parsed.messagingPillars, null, 2) : ''),
+        competitiveLandscape: parseCompetitors(parsed.competitiveLandscape),
+        customerLanguage: typeof parsed.customerLanguage === 'string' ? parsed.customerLanguage : (parsed.customerLanguage != null ? JSON.stringify(parsed.customerLanguage, null, 2) : ''),
+        proofPoints: typeof parsed.proofPoints === 'string' ? parsed.proofPoints : (parsed.proofPoints != null ? JSON.stringify(parsed.proofPoints, null, 2) : ''),
+        activeHypotheses: typeof parsed.activeHypotheses === 'string' ? parsed.activeHypotheses : (parsed.activeHypotheses != null ? JSON.stringify(parsed.activeHypotheses, null, 2) : ''),
+        brandVoice: typeof parsed.brandVoice === 'string' ? parsed.brandVoice : '',
+        wordsToUse: parseStringArray(parsed.wordsToUse),
+        wordsToAvoid: parseStringArray(parsed.wordsToAvoid),
+      };
+      const hasContent = Object.values(result).some((v) =>
+        Array.isArray(v) ? v.length > 0 : v !== ''
+      );
+      return hasContent ? result : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function handleImport() {
+    setImportParseError(null);
+    const trimmed = importText.trim();
+
+    // JSON: parse locally — fast, no AI cost
+    if (trimmed.startsWith('{')) {
+      const parsed = parseJsonImport(trimmed);
+      if (!parsed) {
+        setImportParseError(
+          'Could not parse the JSON. Make sure it is a valid JSON object with matching field names.'
+        );
+        return;
+      }
+      setForm(parsed);
+      setIsDirty(true);
+      setImportText('');
+      setImportDialogOpen(false);
+      return;
+    }
+
+    // Markdown or prose: send through AI extraction
+    setImportLoading(true);
+    try {
+      const res = await fetch('/api/context/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: trimmed }),
+      });
+      const body = await res.json() as { data?: ContextFormData; error?: string };
+      if (!res.ok || body.error) {
+        setImportParseError(body.error ?? 'Import failed. Please try again.');
+        return;
+      }
+      if (!body.data) {
+        setImportParseError('No data returned from import.');
+        return;
+      }
+      setForm(body.data);
+      setIsDirty(true);
+      setImportText('');
+      setImportDialogOpen(false);
+    } catch {
+      setImportParseError('Import failed. Check your connection and try again.');
+    } finally {
+      setImportLoading(false);
+    }
   }
 
   // ------ Render helpers ------
@@ -1363,6 +1447,17 @@ export default function ContextEditorPage() {
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
+                  disabled={isViewingHistorical}
+                  onClick={() => {
+                    setImportText('');
+                    setImportParseError(null);
+                    setImportDialogOpen(true);
+                  }}
+                >
+                  Import
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={exportAsMarkdown}
                 >
                   Export as Markdown
@@ -1495,6 +1590,49 @@ export default function ContextEditorPage() {
               disabled={!changeSummary.trim() || saving || reviewing}
             >
               {saving ? 'Saving...' : 'Save Version'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import Context</DialogTitle>
+            <DialogDescription>
+              Paste any document — your own markdown, a strategy doc, a Notion export, a competitor
+              analysis, whatever you have. AI will extract and map the fields automatically.
+              JSON exported from Quiver is parsed instantly without an AI call.
+              Fields will replace the current form — you&apos;ll still need to save after importing.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Textarea
+              className="font-mono text-xs min-h-[280px]"
+              placeholder="Paste any document here — markdown, prose, bullet lists, a Notion export…"
+              value={importText}
+              disabled={importLoading}
+              onChange={(e) => {
+                setImportText(e.target.value);
+                setImportParseError(null);
+              }}
+            />
+            {importParseError && (
+              <p className="text-sm text-destructive">{importParseError}</p>
+            )}
+            {importLoading && (
+              <p className="text-sm text-muted-foreground">Extracting fields with AI…</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" disabled={importLoading} onClick={() => setImportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleImport} disabled={!importText.trim() || importLoading}>
+              {importLoading ? 'Importing…' : 'Import'}
             </Button>
           </DialogFooter>
         </DialogContent>
