@@ -49,6 +49,7 @@ Gather this context (ask if not provided):
 | Facebook | Communities, local businesses | 1-2x/day | Groups, native video |
 
 **For detailed platform strategies**: See [references/platforms.md](references/platforms.md)
+
 **For hashtag limits and character counts**: See [references/platform-limits.md](references/platform-limits.md)
 
 ---
