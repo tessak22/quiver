@@ -69,7 +69,7 @@ export async function getNotificationPrefs(memberId: string): Promise<Notificati
 
 export async function createNotification(data: {
   memberId: string;
-  type: string;
+  type: NotificationType;
   title: string;
   body: string;
   linkUrl?: string;

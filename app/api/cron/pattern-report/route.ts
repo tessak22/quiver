@@ -30,10 +30,11 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (!cronSecret) {
     if (process.env.NODE_ENV !== 'development') {
-      // In production, refuse to run without a secret configured
+      // Return 200 (not 500) to prevent Vercel cron from retrying a misconfiguration
+      console.error('[cron/pattern-report] CRON_SECRET is not configured in production');
       return NextResponse.json(
         { error: 'CRON_SECRET is not configured' },
-        { status: 500 }
+        { status: 200 }
       );
     }
     // In development, warn and continue
@@ -53,8 +54,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   try {
     const result = await generatePatternReport();
 
-    // Fan-out in-app notification to all members with the type enabled
-    if (!('skipped' in result) || !result.skipped) {
+    // Fan-out in-app notification only when a report was actually created
+    if (!('skipped' in result) && !('error' in result)) {
       const monthLabel = new Intl.DateTimeFormat('en-US', {
         month: 'long',
         year: 'numeric',

@@ -226,7 +226,7 @@ export default function NewSessionPage() {
 
         {/* Intent result alert */}
         {intentAlert && (
-          <Alert variant={intentAlert.confidence === 'high' ? 'default' : 'destructive'}>
+          <Alert variant="default">
             <AlertDescription className="flex items-center justify-between gap-2">
               <span>
                 {intentAlert.confidence === 'high'
@@ -237,14 +237,16 @@ export default function NewSessionPage() {
                     } — does that look right?`
                   : `I'm not sure — I guessed ${MODES.find((m) => m.value === intentAlert.mode)?.label ?? intentAlert.mode}. Please confirm.`}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 onClick={() => setIntentAlert(null)}
-                className="shrink-0 rounded-sm opacity-70 hover:opacity-100"
+                className="h-5 w-5 shrink-0 opacity-70 hover:opacity-100"
                 aria-label="Dismiss"
               >
                 <X className="h-4 w-4" />
-              </button>
+              </Button>
             </AlertDescription>
           </Alert>
         )}

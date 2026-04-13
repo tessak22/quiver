@@ -57,15 +57,19 @@ export function NotificationBell() {
     fetchNotifications();
   }, [fetchNotifications]);
 
-  // When the popover opens, mark all unread notifications as read
+  // When the popover opens, refresh the list then mark all as read
   async function handleOpen(isOpen: boolean) {
     setOpen(isOpen);
-    if (isOpen && unreadCount > 0) {
-      try {
-        await fetch('/api/notifications/read-all', { method: 'POST' });
-        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      } catch {
-        // Non-fatal
+    if (isOpen) {
+      // Refresh to pick up any notifications that arrived since mount
+      await fetchNotifications();
+      if (unreadCount > 0) {
+        try {
+          await fetch('/api/notifications/read-all', { method: 'POST' });
+          setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+        } catch {
+          // Non-fatal
+        }
       }
     }
   }

@@ -89,6 +89,7 @@ export async function generatePatternReport(): Promise<PatternReportResult> {
     const result = await sendMessage({
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
+      maxTokens: 2048,
     });
 
     if (result.error) {

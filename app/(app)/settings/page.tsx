@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -289,7 +290,7 @@ export default function SettingsPage() {
       const data = (await res.json()) as { prefs: NotificationPrefs };
       setNotifPrefs(data.prefs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update notification preference');
+      toast.error(err instanceof Error ? err.message : 'Failed to update notification preference');
     } finally {
       setNotifPrefsBusy(false);
     }
@@ -748,7 +749,7 @@ export default function SettingsPage() {
                       id={`notif-${type}`}
                       checked={notifPrefs[type] !== false}
                       onCheckedChange={(checked) => handleNotifPrefChange(type as NotificationType, checked)}
-                      disabled={notifPrefsBusy}
+                      disabled={loading || notifPrefsBusy}
                     />
                   </div>
                 </div>

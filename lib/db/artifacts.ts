@@ -204,7 +204,7 @@ export async function transitionArtifactStatus(
     await createNotificationsForAllMembers({
       type: 'artifact_live',
       title: `"${artifact.title}" is live`,
-      body: `This artifact went live. Log performance results in ${14} days on ${reminderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.`,
+      body: `This artifact went live. Log performance results in 14 days on ${reminderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.`,
       linkUrl: `/artifacts/${id}`,
     }).catch((err) => {
       console.error('[artifacts] Failed to create artifact_live notifications:', err);
@@ -303,5 +303,27 @@ export async function getReminders() {
       campaign: { select: { id: true, name: true } },
     },
     orderBy: { recordedAt: 'asc' },
+  });
+}
+
+// Get the most recent pattern report artifact for a given month.
+// Returns null if no pattern report exists for the given year/month.
+export async function getLatestPatternReport(year: number, month: number): Promise<{
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+} | null> {
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 1);
+
+  return prisma.artifact.findFirst({
+    where: {
+      type: 'other',
+      title: { startsWith: 'Pattern Report' },
+      createdAt: { gte: monthStart, lt: monthEnd },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, title: true, content: true, createdAt: true },
   });
 }

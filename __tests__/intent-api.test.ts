@@ -83,7 +83,7 @@ describe('POST /api/sessions/intent', () => {
     expect(body.error.length).toBeGreaterThan(0);
   });
 
-  it('returns 400 when prompt is exactly 500 characters (boundary)', async () => {
+  it('accepts prompt at exactly 500 characters (upper boundary)', async () => {
     // 500 chars is the max allowed — should succeed
     const exactPrompt = 'a'.repeat(500);
     mockClassifyIntent.mockResolvedValue({

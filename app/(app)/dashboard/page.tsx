@@ -9,7 +9,7 @@ import type {
   ArtifactStatus,
 } from '@/types';
 import { loadDashboardData } from '@/lib/db/dashboard';
-import { prisma } from '@/lib/db';
+import { getLatestPatternReport } from '@/lib/db/artifacts';
 
 // ---------------------------------------------------------------------------
 // Types — mirror API response shapes
@@ -573,6 +573,21 @@ function ContextStatusBlock({
   );
 }
 
+// Strip common markdown syntax for safe plain-text preview rendering.
+// Full markdown is available on the artifact detail page via marked+DOMPurify.
+function stripMarkdownForPreview(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')       // headings
+    .replace(/\*\*(.*?)\*\*/g, '$1')    // bold
+    .replace(/\*(.*?)\*/g, '$1')        // italic
+    .replace(/`{1,3}[\s\S]*?`{1,3}/g, '')  // inline/code blocks
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+    .replace(/^\s*[-*+]\s+/gm, '')      // unordered lists
+    .replace(/^\s*\d+\.\s+/gm, '')      // ordered lists
+    .replace(/\n{2,}/g, ' ')            // collapse blank lines
+    .trim();
+}
+
 function MonthlyInsightsBlock({
   report,
 }: {
@@ -581,10 +596,11 @@ function MonthlyInsightsBlock({
   if (!report) return null;
 
   const PREVIEW_LENGTH = 300;
-  const isTruncated = report.content.length > PREVIEW_LENGTH;
+  const stripped = stripMarkdownForPreview(report.content);
+  const isTruncated = stripped.length > PREVIEW_LENGTH;
   const preview = isTruncated
-    ? `${report.content.slice(0, PREVIEW_LENGTH)}...`
-    : report.content;
+    ? `${stripped.slice(0, PREVIEW_LENGTH)}...`
+    : stripped;
 
   return (
     <Alert>
@@ -660,26 +676,11 @@ function DashboardPageContent({
 
 export default async function DashboardPage() {
   try {
-    const [data, latestReport] = await Promise.all([
-      loadDashboardData(),
-      prisma.artifact.findFirst({
-        where: {
-          type: 'other',
-          title: { startsWith: 'Pattern Report' },
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, title: true, content: true, createdAt: true },
-      }),
-    ]);
-
-    // Only show if the report was created within the current calendar month
     const now = new Date();
-    const isCurrentMonth =
-      latestReport !== null &&
-      new Date(latestReport.createdAt).getFullYear() === now.getFullYear() &&
-      new Date(latestReport.createdAt).getMonth() === now.getMonth();
-
-    const patternReport = isCurrentMonth ? latestReport : null;
+    const [data, patternReport] = await Promise.all([
+      loadDashboardData(),
+      getLatestPatternReport(now.getFullYear(), now.getMonth()),
+    ]);
 
     return <DashboardPageContent data={data} patternReport={patternReport} />;
   } catch (err) {
