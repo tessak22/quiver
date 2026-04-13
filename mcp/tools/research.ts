@@ -407,6 +407,21 @@ export function registerResearchTools(server: McpServer) {
           return error(`Research entry '${args.id}' not found.`);
         }
 
+        const VALID_SENTIMENTS = ['positive', 'negative', 'neutral', 'mixed'] as const;
+        if (args.sentiment !== undefined && !VALID_SENTIMENTS.includes(args.sentiment as typeof VALID_SENTIMENTS[number])) {
+          return error(`Invalid sentiment '${args.sentiment}'. Valid values: ${VALID_SENTIMENTS.join(', ')}`);
+        }
+
+        const VALID_CONTACT_STAGES = ['prospect', 'customer', 'churned', 'never_converted'] as const;
+        if (args.contact_stage !== undefined && !VALID_CONTACT_STAGES.includes(args.contact_stage as typeof VALID_CONTACT_STAGES[number])) {
+          return error(`Invalid contact_stage '${args.contact_stage}'. Valid values: ${VALID_CONTACT_STAGES.join(', ')}`);
+        }
+
+        const VALID_SOURCE_TYPES = ['call', 'interview', 'survey', 'review', 'forum', 'support_ticket', 'social', 'common_room', 'other'] as const;
+        if (args.source_type !== undefined && !VALID_SOURCE_TYPES.includes(args.source_type as typeof VALID_SOURCE_TYPES[number])) {
+          return error(`Invalid source_type '${args.source_type}'. Valid values: ${VALID_SOURCE_TYPES.join(', ')}`);
+        }
+
         const updateData: Parameters<typeof prisma.researchEntry.update>[0]['data'] = {};
 
         if (args.title !== undefined) updateData.title = args.title;
@@ -505,6 +520,11 @@ export function registerResearchTools(server: McpServer) {
         });
         if (!existing) {
           return error(`Research quote '${args.quote_id}' not found.`);
+        }
+
+        const VALID_THEMES = ['pricing', 'onboarding', 'competitor_mention', 'feature_gap', 'messaging', 'icp_fit', 'other'] as const;
+        if (args.theme !== undefined && !VALID_THEMES.includes(args.theme as typeof VALID_THEMES[number])) {
+          return error(`Invalid theme '${args.theme}'. Valid values: ${VALID_THEMES.join(', ')}`);
         }
 
         const updateData: Parameters<typeof prisma.researchQuote.update>[0]['data'] = {};

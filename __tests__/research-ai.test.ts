@@ -30,6 +30,7 @@ vi.mock('@/lib/db/context', () => ({
 vi.mock('@/lib/db/research', () => ({
   updateResearchEntry: vi.fn(),
   createResearchQuotes: vi.fn(),
+  getResearchEntry: vi.fn(),
 }));
 
 vi.mock('@/lib/db/performance', () => ({
@@ -42,7 +43,7 @@ vi.mock('@/lib/db/campaigns', () => ({
 
 import { sendMessage } from '@/lib/ai/client';
 import { getActiveContext } from '@/lib/db/context';
-import { updateResearchEntry, createResearchQuotes } from '@/lib/db/research';
+import { updateResearchEntry, createResearchQuotes, getResearchEntry } from '@/lib/db/research';
 import { createPerformanceLog } from '@/lib/db/performance';
 import { getDefaultCampaign } from '@/lib/db/campaigns';
 
@@ -77,6 +78,7 @@ describe('processResearchEntry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getActiveContext).mockResolvedValue(null);
+    vi.mocked(getResearchEntry).mockResolvedValue({ sentimentLocked: false } as never);
     vi.mocked(updateResearchEntry).mockResolvedValue(undefined as never);
     vi.mocked(createResearchQuotes).mockResolvedValue({ count: 0 } as never);
     vi.mocked(createPerformanceLog).mockResolvedValue(undefined as never);

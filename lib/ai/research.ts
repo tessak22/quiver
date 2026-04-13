@@ -29,6 +29,7 @@ import { getActiveContext } from '@/lib/db/context';
 import {
   updateResearchEntry,
   createResearchQuotes,
+  getResearchEntry,
 } from '@/lib/db/research';
 import { createPerformanceLog } from '@/lib/db/performance';
 import { getDefaultCampaign } from '@/lib/db/campaigns';
@@ -146,11 +147,13 @@ export async function processResearchEntry(
       return safeDefaults;
     }
 
-    // 6. Apply results to DB (skip sentiment if manually locked)
+    // 6. Apply results to DB — re-fetch sentimentLocked to avoid a race where
+    //    update_research_entry locks sentiment after AI processing started.
+    const freshEntry = await getResearchEntry(entry.id);
     await updateResearchEntry(entry.id, {
       summary: parsed.summary,
       themes: parsed.themes,
-      sentiment: entry.sentimentLocked ? undefined : parsed.sentiment,
+      sentiment: freshEntry?.sentimentLocked ? undefined : parsed.sentiment,
       hypothesisSignals: parsed.hypothesisSignals,
     });
 
@@ -203,10 +206,11 @@ async function applyDefaults(
   entryId: string,
   defaults: AIProcessingResult
 ): Promise<void> {
+  const entry = await getResearchEntry(entryId);
   await updateResearchEntry(entryId, {
     summary: defaults.summary,
     themes: defaults.themes,
-    sentiment: defaults.sentiment,
+    sentiment: entry?.sentimentLocked ? undefined : defaults.sentiment,
     hypothesisSignals: defaults.hypothesisSignals,
   });
 }

@@ -161,7 +161,12 @@ export function registerArtifactTools(server: McpServer) {
         );
 
         if (content && content.length > 50000) {
-          return error(`Content exceeds 50,000 character limit. Current length: ${content.length.toLocaleString()}. Split into multiple artifacts or shorten.`);
+          return text(JSON.stringify({
+            error: 'content_too_large',
+            message: `Content exceeds 50,000 character limit. Current length: ${content.length.toLocaleString()}. Split into multiple artifacts or shorten.`,
+            current_length: content.length,
+            limit: 50000,
+          }));
         }
 
         const artifact = await createArtifact({
