@@ -177,6 +177,7 @@ export default function ArtifactDetailPage() {
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
 
   const fetchArtifact = useCallback(async () => {
     setLoading(true);
@@ -202,7 +203,24 @@ export default function ArtifactDetailPage() {
     fetchArtifact();
   }, [fetchArtifact]);
 
+  useEffect(() => {
+    fetch('/api/team')
+      .then((res) => res.json())
+      .then((data: { members?: Array<{ id: string; name: string }> }) =>
+        setTeamMembers(data.members ?? [])
+      )
+      .catch(() => {});
+  }, []);
+
   // Status transition
+  function resolveCreatedBy(createdBy: string): string {
+    if (createdBy === 'cron') return 'Automated';
+    if (createdBy === 'mcp') return 'MCP';
+    if (createdBy === 'research_ai') return 'AI';
+    const member = teamMembers.find((m) => m.id === createdBy);
+    return member?.name ?? 'Unknown';
+  }
+
   async function handleStatusChange(newStatus: string) {
     if (!artifact) return;
     setStatusUpdating(true);
@@ -532,8 +550,8 @@ export default function ArtifactDetailPage() {
 
               <div>
                 <span className="text-muted-foreground">Created by:</span>{' '}
-                <span className="font-medium font-mono text-xs">
-                  {artifact.createdBy.slice(0, 8)}...
+                <span className="font-medium">
+                  {resolveCreatedBy(artifact.createdBy)}
                 </span>
               </div>
 

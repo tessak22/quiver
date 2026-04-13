@@ -530,7 +530,7 @@ export default function ContextEditorPage() {
   function resolveUserName(userId: string | null): string {
     if (!userId) return '';
     const member = teamMembers.find((m) => m.id === userId);
-    return member?.name ?? userId.substring(0, 8) + '...';
+    return member?.name ?? 'Unknown';
   }
 
   // ------ Data fetching ------

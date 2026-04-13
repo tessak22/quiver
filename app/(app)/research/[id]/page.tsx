@@ -193,6 +193,7 @@ export default function ResearchEntryDetailPage() {
     campaignId: '',
   });
   const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
 
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -231,6 +232,15 @@ export default function ResearchEntryDetailPage() {
     setLoading(true);
     fetchEntry().finally(() => setLoading(false));
   }, [fetchEntry]);
+
+  useEffect(() => {
+    fetch('/api/team')
+      .then((res) => res.json())
+      .then((data: { members?: Array<{ id: string; name: string }> }) =>
+        setTeamMembers(data.members ?? [])
+      )
+      .catch(() => {});
+  }, []);
 
   // Start polling if summary is null (AI still processing)
   useEffect(() => {
@@ -312,6 +322,14 @@ export default function ResearchEntryDetailPage() {
   }
 
   // Open edit dialog
+  function resolveCreatedBy(createdBy: string): string {
+    if (createdBy === 'cron') return 'Automated';
+    if (createdBy === 'mcp') return 'MCP';
+    if (createdBy === 'research_ai') return 'AI';
+    const member = teamMembers.find((m) => m.id === createdBy);
+    return member?.name ?? 'Unknown';
+  }
+
   function openEditDialog() {
     if (!entry) return;
     setEditForm({
@@ -802,8 +820,8 @@ export default function ResearchEntryDetailPage() {
 
               <div>
                 <span className="text-muted-foreground">Created by:</span>{' '}
-                <span className="font-medium font-mono text-xs">
-                  {entry.createdBy.slice(0, 8)}...
+                <span className="font-medium">
+                  {resolveCreatedBy(entry.createdBy)}
                 </span>
               </div>
 

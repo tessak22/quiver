@@ -680,7 +680,7 @@ export default function CampaignDetailClientPage({
   function getOwnerName(ownerId: string | null): string {
     if (!ownerId) return 'Unassigned';
     const member = teamMembers.find((m) => m.id === ownerId);
-    return member?.name ?? ownerId;
+    return member?.name ?? 'Unknown';
   }
 
   // Fetch campaign

@@ -311,6 +311,7 @@ export default function ContentDetailPage() {
   // Copy states
   const [slugCopied, setSlugCopied] = useState(false);
   const [apiUrlCopied, setApiUrlCopied] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
 
   // Fetch content piece
   const fetchPiece = useCallback(async () => {
@@ -354,6 +355,15 @@ export default function ContentDetailPage() {
   }, [fetchPiece]);
 
   useEffect(() => {
+    fetch('/api/team')
+      .then((res) => res.json())
+      .then((data: { members?: Array<{ id: string; name: string }> }) =>
+        setTeamMembers(data.members ?? [])
+      )
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (saveStateTimerRef.current) {
         clearTimeout(saveStateTimerRef.current);
@@ -362,6 +372,14 @@ export default function ContentDetailPage() {
   }, []);
 
   // Auto-save body on blur
+  function resolveCreatedBy(createdBy: string): string {
+    if (createdBy === 'cron') return 'Automated';
+    if (createdBy === 'mcp') return 'MCP';
+    if (createdBy === 'research_ai') return 'AI';
+    const member = teamMembers.find((m) => m.id === createdBy);
+    return member?.name ?? 'Unknown';
+  }
+
   async function handleBodyBlur() {
     if (!piece || editBody === piece.body || saveState === 'saving') return;
     if (saveStateTimerRef.current) {
@@ -1302,8 +1320,8 @@ export default function ContentDetailPage() {
 
               <div>
                 <span className="text-muted-foreground">Created by:</span>{' '}
-                <span className="font-medium font-mono text-xs">
-                  {piece.createdBy.slice(0, 8)}...
+                <span className="font-medium">
+                  {resolveCreatedBy(piece.createdBy)}
                 </span>
               </div>
 
