@@ -94,7 +94,7 @@ export async function PATCH(
 
       const currentStatus = existing.status as CampaignStatus;
       const allowedTransitions = STATUS_TRANSITIONS[currentStatus];
-      if (!allowedTransitions.includes(body.status as CampaignStatus)) {
+      if (body.status !== currentStatus && !allowedTransitions.includes(body.status as CampaignStatus)) {
         return NextResponse.json(
           {
             error: `Cannot transition from "${currentStatus}" to "${body.status}". Allowed: ${allowedTransitions.join(', ') || 'none'}`,
