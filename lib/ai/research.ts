@@ -33,6 +33,7 @@ import {
 } from '@/lib/db/research';
 import { createPerformanceLog } from '@/lib/db/performance';
 import { getDefaultCampaign } from '@/lib/db/campaigns';
+import { createNotificationsForAllMembers } from '@/lib/db/notifications';
 
 // -------------------------------------------------------------------------
 // Types
@@ -182,6 +183,16 @@ export async function processResearchEntry(
           campaignId,
           qualitativeNotes: `Research-driven proposal from: ${entry.id}`,
           recordedBy: 'research_ai',
+        });
+
+        const count = parsed.contextProposals.length;
+        await createNotificationsForAllMembers({
+          type: 'context_proposal',
+          title: `${count} context update${count > 1 ? 's' : ''} proposed`,
+          body: `Research entry "${entry.title}" identified ${count} suggested update${count > 1 ? 's' : ''} to your positioning, ICP, or hypotheses.`,
+          linkUrl: '/context',
+        }).catch((err) => {
+          console.error('[research-ai] Failed to create context_proposal notifications:', err);
         });
       }
     }

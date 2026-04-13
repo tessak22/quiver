@@ -135,13 +135,32 @@ model PerformanceLog {
 }
 
 model TeamMember {
-  id        String   @id
-  name      String
-  email     String   @unique
-  role      String   @default("member")
-  createdAt DateTime @default(now())
+  id                String   @id
+  name              String
+  email             String   @unique
+  role              String   @default("member")
+  notificationPrefs Json     @default("{}")
+  createdAt         DateTime @default(now())
+
+  notifications Notification[]
 
   @@map("team_members")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  memberId  String
+  type      String
+  title     String
+  body      String
+  linkUrl   String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  member TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, isRead])
+  @@map("notifications")
 }
 
 // --- Issue #47: Customer Research ---

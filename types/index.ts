@@ -255,3 +255,27 @@ export interface BulkOperationResult {
   failed: Array<{ id: string; reason: string }>;
   skipped: Array<{ id: string; reason: string }>;
 }
+
+// ---------------------------------------------------------------------------
+// Issue #38: Notifications
+// ---------------------------------------------------------------------------
+
+export type NotificationType = 'pattern_report' | 'context_proposal' | 'artifact_live';
+
+export const NOTIFICATION_TYPES: NotificationType[] = [
+  'pattern_report',
+  'context_proposal',
+  'artifact_live',
+];
+
+export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
+  pattern_report: 'Monthly Pattern Reports',
+  context_proposal: 'Context Update Proposals',
+  artifact_live: 'Artifact Live Reminders',
+};
+
+export interface NotificationPrefs {
+  pattern_report?: boolean;
+  context_proposal?: boolean;
+  artifact_live?: boolean;
+}

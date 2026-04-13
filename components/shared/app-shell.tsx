@@ -24,6 +24,8 @@ import {
   BowArrow,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/shared/theme-toggle';
+import { NotificationBell } from '@/components/shared/notification-bell';
+import { Toaster } from 'sonner';
 
 interface AppShellProps {
   user: { name: string; role: string };
@@ -152,6 +154,7 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
                 )}
               </Link>
             )}
+            <NotificationBell />
             <ThemeToggle />
           </div>
         </header>
@@ -161,6 +164,7 @@ export function AppShell({ user, contextVersion, pendingProposals, children }: A
           {children}
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }

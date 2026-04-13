@@ -2,12 +2,14 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type {
   SessionMode,
   ArtifactType,
   ArtifactStatus,
 } from '@/types';
 import { loadDashboardData } from '@/lib/db/dashboard';
+import { prisma } from '@/lib/db';
 
 // ---------------------------------------------------------------------------
 // Types — mirror API response shapes
@@ -61,6 +63,13 @@ interface ReminderRecord {
 interface ContextRecord {
   id: string;
   version: number;
+  createdAt: Date | string;
+}
+
+interface PatternReportRecord {
+  id: string;
+  title: string;
+  content: string;
   createdAt: Date | string;
 }
 
@@ -564,6 +573,35 @@ function ContextStatusBlock({
   );
 }
 
+function MonthlyInsightsBlock({
+  report,
+}: {
+  report: PatternReportRecord | null;
+}) {
+  if (!report) return null;
+
+  const PREVIEW_LENGTH = 300;
+  const isTruncated = report.content.length > PREVIEW_LENGTH;
+  const preview = isTruncated
+    ? `${report.content.slice(0, PREVIEW_LENGTH)}...`
+    : report.content;
+
+  return (
+    <Alert>
+      <AlertTitle>Monthly Insights</AlertTitle>
+      <AlertDescription>
+        <span>{preview}</span>{' '}
+        <Link
+          href={`/artifacts/${report.id}`}
+          className="font-medium underline underline-offset-2 hover:no-underline"
+        >
+          View full report →
+        </Link>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function DashboardLoadWarning({ issues }: { issues: string[] }) {
   if (issues.length === 0) return null;
 
@@ -578,7 +616,13 @@ function DashboardLoadWarning({ issues }: { issues: string[] }) {
 // Page
 // ---------------------------------------------------------------------------
 
-function DashboardPageContent({ data }: { data: DashboardData }) {
+function DashboardPageContent({
+  data,
+  patternReport,
+}: {
+  data: DashboardData;
+  patternReport: PatternReportRecord | null;
+}) {
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
@@ -590,6 +634,9 @@ function DashboardPageContent({ data }: { data: DashboardData }) {
       </div>
 
       <DashboardLoadWarning issues={data.loadIssues} />
+
+      {/* Monthly Insights — shown when a current-month pattern report exists */}
+      <MonthlyInsightsBlock report={patternReport} />
 
       {/* Quick Start — full width */}
       <QuickStartBlock />
@@ -613,8 +660,28 @@ function DashboardPageContent({ data }: { data: DashboardData }) {
 
 export default async function DashboardPage() {
   try {
-    const data = await loadDashboardData();
-    return <DashboardPageContent data={data} />;
+    const [data, latestReport] = await Promise.all([
+      loadDashboardData(),
+      prisma.artifact.findFirst({
+        where: {
+          type: 'other',
+          title: { startsWith: 'Pattern Report' },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, title: true, content: true, createdAt: true },
+      }),
+    ]);
+
+    // Only show if the report was created within the current calendar month
+    const now = new Date();
+    const isCurrentMonth =
+      latestReport !== null &&
+      new Date(latestReport.createdAt).getFullYear() === now.getFullYear() &&
+      new Date(latestReport.createdAt).getMonth() === now.getMonth();
+
+    const patternReport = isCurrentMonth ? latestReport : null;
+
+    return <DashboardPageContent data={data} patternReport={patternReport} />;
   } catch (err) {
     console.error('[dashboard] Failed to render dashboard', { error: err });
     return (

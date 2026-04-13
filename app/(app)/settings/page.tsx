@@ -30,9 +30,11 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
-import type { TeamRole } from '@/types';
+import type { TeamRole, NotificationPrefs, NotificationType } from '@/types';
+import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_LABELS } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -127,6 +129,10 @@ export default function SettingsPage() {
   const [skillsUpdateBusy, setSkillsUpdateBusy] = useState(false);
   const [skillsUpdateMsg, setSkillsUpdateMsg] = useState<string | null>(null);
 
+  // Notification prefs
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({});
+  const [notifPrefsBusy, setNotifPrefsBusy] = useState(false);
+
   const isAdmin = currentUser?.role === 'admin';
 
   // ---- Computed: admin count for last-admin protection ----
@@ -161,6 +167,13 @@ export default function SettingsPage() {
       if (keyRes.ok) {
         const keyData: { isSet: boolean; hint: string | null } = await keyRes.json();
         setApiKeyHint(keyData.hint);
+      }
+
+      // Load notification preferences
+      const prefsRes = await fetch('/api/notifications/preferences');
+      if (prefsRes.ok) {
+        const prefsData = (await prefsRes.json()) as { prefs: NotificationPrefs };
+        setNotifPrefs(prefsData.prefs);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
@@ -263,6 +276,25 @@ export default function SettingsPage() {
     }
   }
 
+  // ---- Notification prefs handler ----
+  async function handleNotifPrefChange(type: NotificationType, enabled: boolean) {
+    setNotifPrefsBusy(true);
+    try {
+      const res = await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [type]: enabled }),
+      });
+      if (!res.ok) throw new Error('Failed to update preference');
+      const data = (await res.json()) as { prefs: NotificationPrefs };
+      setNotifPrefs(data.prefs);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update notification preference');
+    } finally {
+      setNotifPrefsBusy(false);
+    }
+  }
+
   // ---- Skills update handler ----
   async function handleSkillsUpdate() {
     if (!isAdmin) return;
@@ -340,6 +372,7 @@ export default function SettingsPage() {
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="skills">Skills</TabsTrigger>
+          <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
 
         {/* ================================================================
@@ -681,6 +714,45 @@ export default function SettingsPage() {
                   </p>
                 )
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ================================================================
+            Notifications
+            ================================================================ */}
+        <TabsContent value="notifications">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Notification Preferences</CardTitle>
+              <CardDescription>
+                Choose which in-app events you want to be notified about.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {NOTIFICATION_TYPES.map((type, i) => (
+                <div key={type}>
+                  {i > 0 && <Separator className="mb-4" />}
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor={`notif-${type}`} className="text-sm font-medium">
+                        {NOTIFICATION_TYPE_LABELS[type]}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        {type === 'pattern_report' && 'Notified when a new monthly pattern report is generated.'}
+                        {type === 'context_proposal' && 'Notified when AI identifies potential updates to your positioning, ICP, or hypotheses.'}
+                        {type === 'artifact_live' && 'Notified when an artifact goes live, as a reminder to log performance results.'}
+                      </p>
+                    </div>
+                    <Switch
+                      id={`notif-${type}`}
+                      checked={notifPrefs[type] !== false}
+                      onCheckedChange={(checked) => handleNotifPrefChange(type as NotificationType, checked)}
+                      disabled={notifPrefsBusy}
+                    />
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </TabsContent>

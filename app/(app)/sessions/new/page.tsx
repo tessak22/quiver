@@ -13,6 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2, X } from 'lucide-react';
+import { toast } from 'sonner';
 import type { SessionMode, ArtifactType } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -101,6 +105,16 @@ export default function NewSessionPage() {
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [starting, setStarting] = useState(false);
 
+  // Intent detection state
+  const [intentPrompt, setIntentPrompt] = useState('');
+  const [detectingIntent, setDetectingIntent] = useState(false);
+  const [intentAlert, setIntentAlert] = useState<{
+    mode: SessionMode;
+    artifactType?: ArtifactType;
+    confidence: 'high' | 'low';
+    reasoning: string;
+  } | null>(null);
+
   // Fetch campaigns for the optional selector
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -121,6 +135,41 @@ export default function NewSessionPage() {
   }, [fetchCampaigns]);
 
   const canStart = selectedMode !== null && (selectedMode !== 'create' || artifactType !== undefined);
+
+  async function handleDetectIntent() {
+    if (!intentPrompt.trim()) return;
+    setDetectingIntent(true);
+    setIntentAlert(null);
+    try {
+      const res = await fetch('/api/sessions/intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: intentPrompt }),
+      });
+      if (!res.ok) {
+        const data: { error?: string } = await res.json();
+        throw new Error(data.error ?? 'Intent detection failed');
+      }
+      const data: {
+        mode: SessionMode;
+        artifactType?: ArtifactType;
+        confidence: 'high' | 'low';
+        reasoning: string;
+      } = await res.json();
+      // Pre-select the returned mode and artifact type
+      setSelectedMode(data.mode);
+      if (data.mode === 'create' && data.artifactType) {
+        setArtifactType(data.artifactType);
+      } else {
+        setArtifactType(undefined);
+      }
+      setIntentAlert(data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Intent detection failed');
+    } finally {
+      setDetectingIntent(false);
+    }
+  }
 
   function handleStartSession() {
     if (!canStart || !selectedMode) return;
@@ -143,6 +192,62 @@ export default function NewSessionPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Choose a mode and configure your AI session.
         </p>
+      </div>
+
+      {/* Intent Detection */}
+      <div className="space-y-3">
+        <Label className="text-base font-medium">What do you want to work on?</Label>
+        <div className="flex gap-2">
+          <Textarea
+            placeholder="What do you want to work on?"
+            value={intentPrompt}
+            onChange={(e) => setIntentPrompt(e.target.value)}
+            className="resize-none"
+            rows={2}
+            maxLength={500}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleDetectIntent}
+            disabled={detectingIntent || intentPrompt.trim().length === 0}
+            className="shrink-0 self-end"
+          >
+            {detectingIntent ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Detecting...
+              </>
+            ) : (
+              'Detect mode'
+            )}
+          </Button>
+        </div>
+
+        {/* Intent result alert */}
+        {intentAlert && (
+          <Alert variant={intentAlert.confidence === 'high' ? 'default' : 'destructive'}>
+            <AlertDescription className="flex items-center justify-between gap-2">
+              <span>
+                {intentAlert.confidence === 'high'
+                  ? `I think you want a ${MODES.find((m) => m.value === intentAlert.mode)?.label ?? intentAlert.mode} session${
+                      intentAlert.artifactType
+                        ? ` for a ${intentAlert.artifactType.replace(/_/g, ' ')}`
+                        : ''
+                    } — does that look right?`
+                  : `I'm not sure — I guessed ${MODES.find((m) => m.value === intentAlert.mode)?.label ?? intentAlert.mode}. Please confirm.`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIntentAlert(null)}
+                className="shrink-0 rounded-sm opacity-70 hover:opacity-100"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {/* Mode Selector */}

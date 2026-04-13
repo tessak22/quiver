@@ -18,6 +18,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { REMINDER_PREFIX, ARTIFACT_STATUSES } from '@/types';
+import { createNotificationsForAllMembers } from '@/lib/db/notifications';
 import { getValidTransitions } from '@/lib/artifact-transitions';
 import type { ArtifactStatus, PerformanceSignal } from '@/types';
 
@@ -183,6 +184,7 @@ export async function transitionArtifactStatus(
   });
 
   // When artifact goes live, create a close-the-loop reminder 14 days out
+  // and fan-out an in-app notification
   if (newStatus === 'live') {
     const reminderDate = new Date();
     reminderDate.setDate(reminderDate.getDate() + 14);
@@ -197,6 +199,15 @@ export async function transitionArtifactStatus(
         recordedBy: userId,
         recordedAt: reminderDate,
       },
+    });
+
+    await createNotificationsForAllMembers({
+      type: 'artifact_live',
+      title: `"${artifact.title}" is live`,
+      body: `This artifact went live. Log performance results in ${14} days on ${reminderDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.`,
+      linkUrl: `/artifacts/${id}`,
+    }).catch((err) => {
+      console.error('[artifacts] Failed to create artifact_live notifications:', err);
     });
   }
 
