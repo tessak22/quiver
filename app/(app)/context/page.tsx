@@ -506,6 +506,11 @@ export default function ContextEditorPage() {
     isConsistent: boolean;
   } | null>(null);
 
+  // Import state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importParseError, setImportParseError] = useState<string | null>(null);
+
   // Team members for resolving updatedBy IDs to names
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -945,6 +950,93 @@ export default function ContextEditorPage() {
     URL.revokeObjectURL(url);
   }
 
+  // ------ Import ------
+
+  function parseImport(text: string): ContextFormData | null {
+    const trimmed = text.trim();
+
+    // Try JSON first
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+        return {
+          positioningStatement: typeof parsed.positioningStatement === 'string' ? parsed.positioningStatement : '',
+          icpDefinition: typeof parsed.icpDefinition === 'string' ? parsed.icpDefinition : (parsed.icpDefinition != null ? JSON.stringify(parsed.icpDefinition, null, 2) : ''),
+          messagingPillars: typeof parsed.messagingPillars === 'string' ? parsed.messagingPillars : (parsed.messagingPillars != null ? JSON.stringify(parsed.messagingPillars, null, 2) : ''),
+          competitiveLandscape: parseCompetitors(parsed.competitiveLandscape),
+          customerLanguage: typeof parsed.customerLanguage === 'string' ? parsed.customerLanguage : (parsed.customerLanguage != null ? JSON.stringify(parsed.customerLanguage, null, 2) : ''),
+          proofPoints: typeof parsed.proofPoints === 'string' ? parsed.proofPoints : (parsed.proofPoints != null ? JSON.stringify(parsed.proofPoints, null, 2) : ''),
+          activeHypotheses: typeof parsed.activeHypotheses === 'string' ? parsed.activeHypotheses : (parsed.activeHypotheses != null ? JSON.stringify(parsed.activeHypotheses, null, 2) : ''),
+          brandVoice: typeof parsed.brandVoice === 'string' ? parsed.brandVoice : '',
+          wordsToUse: parseStringArray(parsed.wordsToUse),
+          wordsToAvoid: parseStringArray(parsed.wordsToAvoid),
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    // Try markdown
+    const result: ContextFormData = { ...EMPTY_FORM };
+    const sections = trimmed.split(/^## /m);
+
+    for (const section of sections.slice(1)) {
+      const newlineIdx = section.indexOf('\n');
+      if (newlineIdx === -1) continue;
+      const heading = section.slice(0, newlineIdx).trim().toLowerCase();
+      const content = section.slice(newlineIdx + 1).trim();
+      if (!content) continue;
+
+      if (heading === 'positioning') {
+        result.positioningStatement = content;
+      } else if (heading === 'target audience & icp') {
+        result.icpDefinition = content;
+      } else if (heading === 'messaging pillars') {
+        result.messagingPillars = content;
+      } else if (heading === 'competitive landscape') {
+        const competitors: CompetitorEntry[] = [];
+        for (const line of content.split('\n')) {
+          const match = line.match(/^-\s+\*\*(.+?)\*\*:\s*(.*)$/);
+          if (match) competitors.push({ name: match[1].trim(), notes: match[2].trim() });
+        }
+        if (competitors.length > 0) result.competitiveLandscape = competitors;
+      } else if (heading === 'customer language') {
+        result.customerLanguage = content;
+      } else if (heading === 'proof points') {
+        result.proofPoints = content;
+      } else if (heading === 'active hypotheses') {
+        result.activeHypotheses = content;
+      } else if (heading === 'brand voice') {
+        result.brandVoice = content;
+      } else if (heading === 'words to use') {
+        result.wordsToUse = content.split(',').map((s) => s.trim()).filter(Boolean);
+      } else if (heading === 'words to avoid') {
+        result.wordsToAvoid = content.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+    }
+
+    // Only accept the markdown parse if at least one field was populated
+    const hasContent = Object.values(result).some((v) =>
+      Array.isArray(v) ? v.length > 0 : v !== ''
+    );
+    return hasContent ? result : null;
+  }
+
+  function handleImport() {
+    setImportParseError(null);
+    const parsed = parseImport(importText);
+    if (!parsed) {
+      setImportParseError(
+        'Could not parse the input. Paste a Quiver-exported JSON or Markdown file, or a JSON object with the matching field names.'
+      );
+      return;
+    }
+    setForm(parsed);
+    setIsDirty(true);
+    setImportText('');
+    setImportDialogOpen(false);
+  }
+
   // ------ Render helpers ------
 
   const isViewingHistorical =
@@ -1363,6 +1455,17 @@ export default function ContextEditorPage() {
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
+                  disabled={isViewingHistorical}
+                  onClick={() => {
+                    setImportText('');
+                    setImportParseError(null);
+                    setImportDialogOpen(true);
+                  }}
+                >
+                  Import
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={exportAsMarkdown}
                 >
                   Export as Markdown
@@ -1495,6 +1598,43 @@ export default function ContextEditorPage() {
               disabled={!changeSummary.trim() || saving || reviewing}
             >
               {saving ? 'Saving...' : 'Save Version'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import Context</DialogTitle>
+            <DialogDescription>
+              Paste a Quiver-exported Markdown or JSON file, or any JSON with matching field names.
+              This will replace the current form — you&apos;ll still need to save after importing.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <Textarea
+              className="font-mono text-xs min-h-[280px]"
+              placeholder={`Paste JSON or Markdown here…\n\nJSON example:\n{\n  "positioningStatement": "...",\n  "icpDefinition": "...",\n  "brandVoice": "..."\n}\n\nMarkdown example:\n## Positioning\nWe help...\n\n## Brand Voice\nDirect, clear...`}
+              value={importText}
+              onChange={(e) => {
+                setImportText(e.target.value);
+                setImportParseError(null);
+              }}
+            />
+            {importParseError && (
+              <p className="text-sm text-destructive">{importParseError}</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleImport} disabled={!importText.trim()}>
+              Import
             </Button>
           </DialogFooter>
         </DialogContent>
