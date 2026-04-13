@@ -47,3 +47,6 @@ mcp/package-lock.json
 
 # local tools / docs
 docs/
+
+# Local Netlify folder
+.netlify

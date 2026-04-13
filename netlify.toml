@@ -1,0 +1,11 @@
+[build]
+  command = "prisma generate && next build"
+  publish = ".next"
+
+# Required for Next.js 14 App Router support on Netlify
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Scheduled functions live in netlify/functions/ — equivalent to vercel.json crons
+[functions]
+  directory = "netlify/functions"
