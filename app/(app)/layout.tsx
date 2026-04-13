@@ -18,25 +18,31 @@ export default async function AppLayout({
   }
 
   // Verify team membership — redirect non-members
-  const member = await prisma.teamMember.findUnique({
-    where: { id: user.id },
-    select: { name: true, role: true },
-  });
+  let member, activeContext, pendingProposals;
+  try {
+    member = await prisma.teamMember.findUnique({
+      where: { id: user.id },
+      select: { name: true, role: true },
+    });
 
-  if (!member) {
-    redirect('/login');
+    if (!member) {
+      redirect('/login');
+    }
+
+    // Get active context version for header
+    activeContext = await prisma.contextVersion.findFirst({
+      where: { isActive: true },
+      select: { id: true, version: true },
+    });
+
+    // Get pending proposals count
+    pendingProposals = await prisma.performanceLog.count({
+      where: { contextUpdateStatus: 'pending' },
+    });
+  } catch (err) {
+    console.error('[app-layout] Prisma error:', err);
+    throw err;
   }
-
-  // Get active context version for header
-  const activeContext = await prisma.contextVersion.findFirst({
-    where: { isActive: true },
-    select: { id: true, version: true },
-  });
-
-  // Get pending proposals count
-  const pendingProposals = await prisma.performanceLog.count({
-    where: { contextUpdateStatus: 'pending' },
-  });
 
   return (
     <AppShell
