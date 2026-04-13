@@ -530,6 +530,9 @@ export default function ContextEditorPage() {
 
   function resolveUserName(userId: string | null): string {
     if (!userId) return '';
+    if (userId === 'cron') return 'Automated';
+    if (userId === 'mcp') return 'MCP';
+    if (userId === 'research_ai') return 'AI';
     const member = teamMembers.find((m) => m.id === userId);
     return member?.name ?? 'Unknown';
   }

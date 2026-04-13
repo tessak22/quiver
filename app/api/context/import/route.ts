@@ -76,10 +76,20 @@ Do not invent content — only extract what is present in the document. Use null
   }
 
   try {
-    // Extract JSON from response — handles fenced blocks, preambles, trailing text
+    // Extract JSON: try fenced block → direct parse → first-{-to-last-} span
     const fenced = result.content.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
-    const raw = (fenced ? fenced[1] : result.content).trim();
-    const extracted = JSON.parse(raw) as Record<string, unknown>;
+    let raw = (fenced ? fenced[1] : result.content).trim();
+    let extracted: Record<string, unknown>;
+    try {
+      extracted = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      // Fallback: extract the span from the first { to the last } in the response
+      const start = result.content.indexOf('{');
+      const end = result.content.lastIndexOf('}');
+      if (start === -1 || end === -1 || end <= start) throw new Error('No JSON found in AI response');
+      raw = result.content.slice(start, end + 1);
+      extracted = JSON.parse(raw) as Record<string, unknown>;
+    }
 
     const data = {
         positioningStatement: typeof extracted.positioningStatement === 'string' ? extracted.positioningStatement : '',

@@ -494,7 +494,7 @@ function ContentTab({ campaignId }: { campaignId: string }) {
   return (
     <div className="space-y-2">
       {visibleContent.map((piece) => (
-        <Link key={piece.id} href={`/content/${piece.slug}`} className="block">
+        <Link key={piece.id} href={`/content/${piece.id}`} className="block">
           <Card className="transition-colors hover:bg-muted/50">
             <CardContent className="flex items-center justify-between gap-4 py-3 px-4">
               <div className="flex-1 min-w-0">
