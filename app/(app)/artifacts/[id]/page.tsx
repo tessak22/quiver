@@ -21,6 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { marked } from 'marked';
+import DOMPurify from 'isomorphic-dompurify';
 import type { ArtifactType, ArtifactStatus, PerformanceSignal } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -189,6 +191,10 @@ export default function ArtifactDetailPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
+  const [previewMode, setPreviewMode] = useState(true);
+  const [typeChanging, setTypeChanging] = useState(false);
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
+  const [campaignChanging, setCampaignChanging] = useState(false);
 
   const fetchArtifact = useCallback(async () => {
     setLoading(true);
@@ -219,6 +225,12 @@ export default function ArtifactDetailPage() {
       .then((res) => res.json())
       .then((data: { members?: Array<{ id: string; name: string }> }) =>
         setTeamMembers(data.members ?? [])
+      )
+      .catch(() => {});
+    fetch('/api/campaigns')
+      .then((res) => res.json())
+      .then((data: { campaigns?: Array<{ id: string; name: string }> }) =>
+        setCampaigns(data.campaigns ?? [])
       )
       .catch(() => {});
   }, []);
@@ -345,6 +357,50 @@ export default function ArtifactDetailPage() {
     }
   }
 
+  async function handleTypeChange(newType: string) {
+    if (!artifact) return;
+    setTypeChanging(true);
+    try {
+      const res = await fetch(`/api/artifacts/${artifact.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: newType }),
+      });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        throw new Error(data.error ?? 'Failed to update type');
+      }
+      const data = await res.json() as { artifact: ArtifactDetail };
+      setArtifact(data.artifact);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update type');
+    } finally {
+      setTypeChanging(false);
+    }
+  }
+
+  async function handleCampaignChange(newCampaignId: string) {
+    if (!artifact) return;
+    setCampaignChanging(true);
+    try {
+      const res = await fetch(`/api/artifacts/${artifact.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId: newCampaignId }),
+      });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        throw new Error(data.error ?? 'Failed to update campaign');
+      }
+      const data = await res.json() as { artifact: ArtifactDetail };
+      setArtifact(data.artifact);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update campaign');
+    } finally {
+      setCampaignChanging(false);
+    }
+  }
+
   // --- Loading state ---
   if (loading) {
     return (
@@ -424,10 +480,30 @@ export default function ArtifactDetailPage() {
 
           {/* Content */}
           <Card>
-            <CardContent className="p-6">
-              <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">
-                {artifact.content}
-              </div>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Content</CardTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setPreviewMode((prev) => !prev)}
+              >
+                {previewMode ? 'View raw' : 'Preview'}
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6 pt-0">
+              {previewMode ? (
+                <div
+                  className="prose max-w-none dark:prose-invert"
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(marked(artifact.content) as string),
+                  }}
+                />
+              ) : (
+                <div className="whitespace-pre-wrap text-sm leading-relaxed break-words font-mono">
+                  {artifact.content}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -550,6 +626,33 @@ export default function ArtifactDetailPage() {
             </DialogContent>
           </Dialog>
 
+          {/* Type selector */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                Type
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Select
+                value={artifact.type}
+                onValueChange={handleTypeChange}
+                disabled={typeChanging}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(ARTIFACT_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+
           {/* Status transition */}
           {validTransitions.length > 0 && (
             <Card>
@@ -587,17 +690,36 @@ export default function ArtifactDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              {artifact.campaign && (
-                <div>
-                  <span className="text-muted-foreground">Campaign:</span>{' '}
+              <div>
+                <span className="text-muted-foreground block mb-1">Campaign:</span>
+                {campaigns.length > 0 ? (
+                  <Select
+                    value={artifact.campaign?.id ?? ''}
+                    onValueChange={handleCampaignChange}
+                    disabled={campaignChanging}
+                  >
+                    <SelectTrigger className="w-full h-8 text-sm">
+                      <SelectValue placeholder="No campaign" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {campaigns.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : artifact.campaign ? (
                   <Link
                     href={`/campaigns/${artifact.campaign.id}`}
                     className="font-medium hover:underline"
                   >
                     {artifact.campaign.name}
                   </Link>
-                </div>
-              )}
+                ) : (
+                  <span className="text-muted-foreground italic">None</span>
+                )}
+              </div>
 
               {artifact.session && (
                 <div>
