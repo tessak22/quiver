@@ -35,7 +35,8 @@ export function BulkConfirmDialog({
   skipped,
   loading,
 }: BulkConfirmDialogProps) {
-  const affectedCount = totalSelected - skipped.length;
+  // totalSelected is already the actionable count (skipped items excluded by caller)
+  const affectedCount = totalSelected;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>

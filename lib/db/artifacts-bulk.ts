@@ -305,11 +305,32 @@ export async function bulkArchive(
   }));
 
   try {
-    await prisma.artifact.updateMany({
+    const { count } = await prisma.artifact.updateMany({
       where: { id: { in: found.map((a) => a.id) } },
       data: { status: 'archived' },
     });
-    return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+
+    if (count === found.length) {
+      return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+    }
+
+    // Count mismatch — concurrent deletion between resolve and updateMany.
+    // Re-verify which rows were actually updated.
+    const verified = await prisma.artifact.findMany({
+      where: { id: { in: found.map((a) => a.id) }, status: 'archived' },
+      select: { id: true },
+    });
+    const succeededSet = new Set(verified.map((a) => a.id));
+    return {
+      succeeded: found.filter((a) => succeededSet.has(a.id)).map((a) => a.id),
+      failed: [
+        ...failed,
+        ...found
+          .filter((a) => !succeededSet.has(a.id))
+          .map((a) => ({ id: a.id, reason: 'Not updated (concurrent modification)' })),
+      ],
+      skipped: [],
+    };
   } catch {
     return {
       succeeded: [],
@@ -329,10 +350,31 @@ export async function bulkDelete(ids: string[]): Promise<BulkOperationResult> {
   }));
 
   try {
-    await prisma.artifact.deleteMany({
+    const { count } = await prisma.artifact.deleteMany({
       where: { id: { in: found.map((a) => a.id) } },
     });
-    return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+
+    if (count === found.length) {
+      return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+    }
+
+    // Count mismatch — concurrent deletion between resolve and deleteMany.
+    // Re-verify by finding IDs that still exist (were not deleted).
+    const stillExisting = await prisma.artifact.findMany({
+      where: { id: { in: found.map((a) => a.id) } },
+      select: { id: true },
+    });
+    const stillExistingSet = new Set(stillExisting.map((a) => a.id));
+    return {
+      succeeded: found.filter((a) => !stillExistingSet.has(a.id)).map((a) => a.id),
+      failed: [
+        ...failed,
+        ...found
+          .filter((a) => stillExistingSet.has(a.id))
+          .map((a) => ({ id: a.id, reason: 'Not deleted (concurrent modification)' })),
+      ],
+      skipped: [],
+    };
   } catch {
     return {
       succeeded: [],
