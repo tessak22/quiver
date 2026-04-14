@@ -38,7 +38,7 @@ interface BulkActionBarProps {
   onDeselectAll: () => void;
   onExitSelectMode: () => void;
   onRequestAction: (
-    action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive',
+    action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive' | 'delete',
     params: Record<string, unknown>
   ) => void;
 }
@@ -177,12 +177,23 @@ export function BulkActionBar({
           {/* Archive */}
           <Button
             size="sm"
-            variant="destructive"
+            variant="outline"
             className="h-8 text-xs"
             disabled={noneSelected}
             onClick={() => onRequestAction('archive', {})}
           >
             Archive
+          </Button>
+
+          {/* Delete */}
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-8 text-xs"
+            disabled={noneSelected}
+            onClick={() => onRequestAction('delete', {})}
+          >
+            Delete
           </Button>
         </div>
       </div>

@@ -2,7 +2,9 @@
  * lib/db/artifacts-bulk.ts
  *
  * What it does: Executes bulk operations on artifacts — status changes,
- *   campaign reassignment, tag modification, and archiving.
+ *   campaign reassignment, tag modification, archiving, and hard deletion.
+ *   bulkArchive bypasses the state machine (grooming action — works on any status).
+ *   bulkDelete is a hard delete; FK relations default to SetNull so related rows survive.
  *
  * What it reads from: prisma.artifact, prisma.campaign, prisma.performanceLog
  * What it produces: BulkOperationResult with succeeded/failed/skipped ID lists.
@@ -291,10 +293,93 @@ export async function bulkRemoveTags(
   return { succeeded, failed, skipped: [] };
 }
 
-/** Bulk archive — shorthand for bulkStatusChange to 'archived'. Only 'live' artifacts can archive in one step. */
+/** Bulk archive — grooming action, bypasses state machine. Works on any status. */
 export async function bulkArchive(
-  ids: string[],
-  userId: string
+  ids: string[]
 ): Promise<BulkOperationResult> {
-  return bulkStatusChange(ids, 'archived', userId);
+  const { found, missing } = await resolveArtifacts(ids);
+
+  const failed: Array<{ id: string; reason: string }> = missing.map((id) => ({
+    id,
+    reason: 'Artifact not found',
+  }));
+
+  try {
+    const { count } = await prisma.artifact.updateMany({
+      where: { id: { in: found.map((a) => a.id) } },
+      data: { status: 'archived' },
+    });
+
+    if (count === found.length) {
+      return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+    }
+
+    // Count mismatch — concurrent deletion between resolve and updateMany.
+    // Re-verify which rows were actually updated.
+    const verified = await prisma.artifact.findMany({
+      where: { id: { in: found.map((a) => a.id) }, status: 'archived' },
+      select: { id: true },
+    });
+    const succeededSet = new Set(verified.map((a) => a.id));
+    return {
+      succeeded: found.filter((a) => succeededSet.has(a.id)).map((a) => a.id),
+      failed: [
+        ...failed,
+        ...found
+          .filter((a) => !succeededSet.has(a.id))
+          .map((a) => ({ id: a.id, reason: 'Not updated (concurrent modification)' })),
+      ],
+      skipped: [],
+    };
+  } catch {
+    return {
+      succeeded: [],
+      failed: [...failed, ...found.map((a) => ({ id: a.id, reason: 'Database error' }))],
+      skipped: [],
+    };
+  }
+}
+
+/** Bulk delete — hard deletes artifacts. Irreversible. Add userId param here when audit logging is implemented. */
+export async function bulkDelete(ids: string[]): Promise<BulkOperationResult> {
+  const { found, missing } = await resolveArtifacts(ids);
+
+  const failed: Array<{ id: string; reason: string }> = missing.map((id) => ({
+    id,
+    reason: 'Artifact not found',
+  }));
+
+  try {
+    const { count } = await prisma.artifact.deleteMany({
+      where: { id: { in: found.map((a) => a.id) } },
+    });
+
+    if (count === found.length) {
+      return { succeeded: found.map((a) => a.id), failed, skipped: [] };
+    }
+
+    // Count mismatch — concurrent deletion between resolve and deleteMany.
+    // Re-verify by finding IDs that still exist (were not deleted).
+    const stillExisting = await prisma.artifact.findMany({
+      where: { id: { in: found.map((a) => a.id) } },
+      select: { id: true },
+    });
+    const stillExistingSet = new Set(stillExisting.map((a) => a.id));
+    return {
+      succeeded: found.filter((a) => !stillExistingSet.has(a.id)).map((a) => a.id),
+      failed: [
+        ...failed,
+        ...found
+          .filter((a) => stillExistingSet.has(a.id))
+          .map((a) => ({ id: a.id, reason: 'Not deleted (concurrent modification)' })),
+      ],
+      skipped: [],
+    };
+  } catch {
+    return {
+      succeeded: [],
+      failed: [...failed, ...found.map((a) => ({ id: a.id, reason: 'Database error' }))],
+      skipped: [],
+    };
+  }
 }

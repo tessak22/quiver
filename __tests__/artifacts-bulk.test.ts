@@ -1,21 +1,69 @@
 /**
- * Tests for lib/db/artifacts-bulk.ts — Pure function tests
+ * Tests for lib/db/artifacts-bulk.ts
  *
- * Tests the pure (non-Prisma) helpers:
+ * Pure function tests:
  *   - partitionByValidTransition: splits artifacts into eligible/skipped
  *   - normalizeBulkTags: trims, deduplicates, truncates, filters
  *   - MAX_BULK_IDS: sanity-check the constant
  *
- * Prisma-dependent functions (bulkStatusChange, etc.) require a real database
- * and are NOT tested here.
+ * Prisma-dependent function tests (mocked):
+ *   - bulkArchive: happy path, missing IDs, concurrency count mismatch
+ *   - bulkDelete: happy path, missing IDs, concurrency count mismatch
+ *
+ * UI logic tests (pure, mirrors handleRequestAction in artifacts/page.tsx):
+ *   - Archive skip computation: only already-archived artifacts are skipped
+ *   - actionableIds invariant: selected = actionable + skipped
+ *   - Dialog count math: affectedCount === actionableIds.length (no double-subtract)
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ---------------------------------------------------------------------------
+// Prisma mock — must be declared before importing the module under test
+// ---------------------------------------------------------------------------
+
+vi.mock('@/lib/db', () => ({
+  prisma: {
+    artifact: {
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+  },
+}));
+
+import { prisma } from '@/lib/db';
 import {
   partitionByValidTransition,
   normalizeBulkTags,
   MAX_BULK_IDS,
+  bulkArchive,
+  bulkDelete,
 } from '@/lib/db/artifacts-bulk';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Mirrors the archive skip logic in handleRequestAction (artifacts/page.tsx). */
+function computeArchiveSelection(
+  selected: Array<{ id: string; status: string; title: string }>
+) {
+  const skipped = selected
+    .filter((a) => a.status === 'archived')
+    .map((a) => ({ id: a.id, reason: `"${a.title}" is already archived` }));
+  const skippedIds = new Set(skipped.map((s) => s.id));
+  const actionableIds = selected.filter((a) => !skippedIds.has(a.id)).map((a) => a.id);
+  return { skipped, actionableIds };
+}
+
+const mockArtifact = (id: string, status = 'draft') => ({
+  id,
+  status,
+  tags: [] as string[],
+  campaignId: 'c1',
+  title: `Artifact ${id}`,
+});
 
 describe('partitionByValidTransition', () => {
   it('places artifact with valid transition in eligible', () => {
@@ -136,5 +184,212 @@ describe('normalizeBulkTags', () => {
 describe('MAX_BULK_IDS', () => {
   it('is 100', () => {
     expect(MAX_BULK_IDS).toBe(100);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bulkArchive
+// ---------------------------------------------------------------------------
+
+describe('bulkArchive', () => {
+  const findMany = prisma.artifact.findMany as ReturnType<typeof vi.fn>;
+  const updateMany = prisma.artifact.updateMany as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('happy path: all found rows archived → all in succeeded', async () => {
+    findMany.mockResolvedValueOnce([mockArtifact('a1', 'draft'), mockArtifact('a2', 'live')]);
+    updateMany.mockResolvedValueOnce({ count: 2 });
+
+    const result = await bulkArchive(['a1', 'a2']);
+
+    expect(result.succeeded).toEqual(['a1', 'a2']);
+    expect(result.failed).toHaveLength(0);
+    expect(result.skipped).toHaveLength(0);
+  });
+
+  it('missing IDs are reported as failed, found rows succeed', async () => {
+    findMany.mockResolvedValueOnce([mockArtifact('a1', 'draft')]);
+    updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const result = await bulkArchive(['a1', 'missing-id']);
+
+    expect(result.succeeded).toEqual(['a1']);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe('missing-id');
+    expect(result.failed[0].reason).toBe('Artifact not found');
+  });
+
+  it('concurrency mismatch: re-verifies and accurately partitions succeeded/failed', async () => {
+    findMany
+      // resolveArtifacts
+      .mockResolvedValueOnce([mockArtifact('a1', 'draft'), mockArtifact('a2', 'draft')])
+      // re-verification query (only a1 archived — a2 was deleted concurrently)
+      .mockResolvedValueOnce([{ id: 'a1' }]);
+    updateMany.mockResolvedValueOnce({ count: 1 }); // mismatch: 1 < 2 found
+
+    const result = await bulkArchive(['a1', 'a2']);
+
+    expect(result.succeeded).toEqual(['a1']);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe('a2');
+    expect(result.failed[0].reason).toContain('concurrent');
+  });
+
+  it('database error → all found in failed', async () => {
+    findMany.mockResolvedValueOnce([mockArtifact('a1')]);
+    updateMany.mockRejectedValueOnce(new Error('DB down'));
+
+    const result = await bulkArchive(['a1']);
+
+    expect(result.succeeded).toHaveLength(0);
+    expect(result.failed[0].id).toBe('a1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bulkDelete
+// ---------------------------------------------------------------------------
+
+describe('bulkDelete', () => {
+  const findMany = prisma.artifact.findMany as ReturnType<typeof vi.fn>;
+  const deleteMany = prisma.artifact.deleteMany as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('happy path: all found rows deleted → all in succeeded', async () => {
+    findMany.mockResolvedValueOnce([mockArtifact('a1'), mockArtifact('a2')]);
+    deleteMany.mockResolvedValueOnce({ count: 2 });
+
+    const result = await bulkDelete(['a1', 'a2']);
+
+    expect(result.succeeded).toEqual(['a1', 'a2']);
+    expect(result.failed).toHaveLength(0);
+    expect(result.skipped).toHaveLength(0);
+  });
+
+  it('missing IDs are reported as failed, found rows succeed', async () => {
+    findMany.mockResolvedValueOnce([mockArtifact('a1')]);
+    deleteMany.mockResolvedValueOnce({ count: 1 });
+
+    const result = await bulkDelete(['a1', 'missing-id']);
+
+    expect(result.succeeded).toEqual(['a1']);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe('missing-id');
+    expect(result.failed[0].reason).toBe('Artifact not found');
+  });
+
+  it('concurrency mismatch: rows still existing after deleteMany are reported as failed', async () => {
+    findMany
+      // resolveArtifacts
+      .mockResolvedValueOnce([mockArtifact('a1'), mockArtifact('a2')])
+      // re-verification: a2 still exists (delete was blocked by concurrent write)
+      .mockResolvedValueOnce([{ id: 'a2' }]);
+    deleteMany.mockResolvedValueOnce({ count: 1 }); // mismatch: 1 < 2 found
+
+    const result = await bulkDelete(['a1', 'a2']);
+
+    expect(result.succeeded).toEqual(['a1']);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe('a2');
+    expect(result.failed[0].reason).toContain('concurrent');
+  });
+
+  it('database error → all found in failed', async () => {
+    findMany.mockResolvedValueOnce([mockArtifact('a1')]);
+    deleteMany.mockRejectedValueOnce(new Error('DB down'));
+
+    const result = await bulkDelete(['a1']);
+
+    expect(result.succeeded).toHaveLength(0);
+    expect(result.failed[0].id).toBe('a1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Archive skip logic and dialog count math
+// (mirrors handleRequestAction in app/(app)/artifacts/page.tsx)
+// ---------------------------------------------------------------------------
+
+describe('archive bulk selection — skip logic', () => {
+  it('already-archived artifacts are skipped, others are actionable', () => {
+    const selected = [
+      { id: 'a1', status: 'draft', title: 'Draft one' },
+      { id: 'a2', status: 'archived', title: 'Already archived' },
+      { id: 'a3', status: 'live', title: 'Live one' },
+    ];
+    const { skipped, actionableIds } = computeArchiveSelection(selected);
+
+    expect(skipped.map((s) => s.id)).toEqual(['a2']);
+    expect(actionableIds).toEqual(['a1', 'a3']);
+  });
+
+  it('all selected already archived → all skipped, no actionable IDs', () => {
+    const selected = [
+      { id: 'a1', status: 'archived', title: 'A' },
+      { id: 'a2', status: 'archived', title: 'B' },
+    ];
+    const { skipped, actionableIds } = computeArchiveSelection(selected);
+
+    expect(skipped).toHaveLength(2);
+    expect(actionableIds).toHaveLength(0);
+  });
+
+  it('none already archived → no skips, all actionable', () => {
+    const selected = [
+      { id: 'a1', status: 'draft', title: 'A' },
+      { id: 'a2', status: 'live', title: 'B' },
+    ];
+    const { skipped, actionableIds } = computeArchiveSelection(selected);
+
+    expect(skipped).toHaveLength(0);
+    expect(actionableIds).toEqual(['a1', 'a2']);
+  });
+
+  it('actionableIds + skipped always equals total selected', () => {
+    const selected = [
+      { id: 'a1', status: 'draft', title: 'A' },
+      { id: 'a2', status: 'archived', title: 'B' },
+      { id: 'a3', status: 'review', title: 'C' },
+      { id: 'a4', status: 'archived', title: 'D' },
+    ];
+    const { skipped, actionableIds } = computeArchiveSelection(selected);
+
+    expect(actionableIds.length + skipped.length).toBe(selected.length);
+  });
+});
+
+describe('dialog count math', () => {
+  it('affectedCount equals actionableIds.length — no double-subtraction of skipped', () => {
+    const selected = [
+      { id: 'a1', status: 'draft', title: 'A' },
+      { id: 'a2', status: 'archived', title: 'B' },
+      { id: 'a3', status: 'live', title: 'C' },
+    ];
+    const { skipped, actionableIds } = computeArchiveSelection(selected);
+
+    // totalSelected passed to dialog = actionableIds.length (already filtered)
+    const totalSelected = actionableIds.length;
+    // affectedCount in BulkConfirmDialog = totalSelected (no longer subtracts skipped)
+    const affectedCount = totalSelected;
+
+    expect(affectedCount).toBe(2); // a1 and a3
+    expect(affectedCount).not.toBe(totalSelected - skipped.length); // old broken formula
+  });
+
+  it('affectedCount is 0 when all selected are already archived', () => {
+    const selected = [
+      { id: 'a1', status: 'archived', title: 'A' },
+      { id: 'a2', status: 'archived', title: 'B' },
+    ];
+    const { actionableIds } = computeArchiveSelection(selected);
+
+    const affectedCount = actionableIds.length;
+    expect(affectedCount).toBe(0);
   });
 });

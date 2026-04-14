@@ -165,7 +165,7 @@ export default function ArtifactsLibraryPage() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pendingBulk, setPendingBulk] = useState<{
-    action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive';
+    action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive' | 'delete';
     params: Record<string, unknown>;
     actionLabel: string;
     skipped: Array<{ id: string; reason: string }>;
@@ -265,15 +265,14 @@ export default function ArtifactsLibraryPage() {
   }, []);
 
   function handleRequestAction(
-    action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive',
+    action: 'status_change' | 'campaign_reassign' | 'add_tags' | 'remove_tags' | 'archive' | 'delete',
     params: Record<string, unknown>
   ) {
     const selected = artifacts.filter((a) => selectedIds.has(a.id));
     let skipped: Array<{ id: string; reason: string }> = [];
 
-    if (action === 'status_change' || action === 'archive') {
-      const targetStatus =
-        action === 'archive' ? 'archived' : (params.targetStatus as string);
+    if (action === 'status_change') {
+      const targetStatus = params.targetStatus as string;
       skipped = selected
         .filter(
           (a) =>
@@ -287,6 +286,11 @@ export default function ArtifactsLibraryPage() {
               ? `"${a.title}" is already ${targetStatus}`
               : `"${a.title}": ${a.status} → ${targetStatus} is not a valid transition`,
         }));
+    } else if (action === 'archive') {
+      // Archive bypasses state machine — only skip already-archived artifacts
+      skipped = selected
+        .filter((a) => a.status === 'archived')
+        .map((a) => ({ id: a.id, reason: `"${a.title}" is already archived` }));
     }
 
     const actionLabel =
@@ -298,9 +302,13 @@ export default function ArtifactsLibraryPage() {
         ? 'Add Tags'
         : action === 'remove_tags'
         ? 'Remove Tags'
-        : 'Archive';
+        : action === 'archive'
+        ? 'Archive'
+        : 'Delete permanently';
 
-    setPendingBulk({ action, params, actionLabel, skipped, actionableIds: selected.map((a) => a.id) });
+    const skippedIds = new Set(skipped.map((s) => s.id));
+    const actionableIds = selected.filter((a) => !skippedIds.has(a.id)).map((a) => a.id);
+    setPendingBulk({ action, params, actionLabel, skipped, actionableIds });
   }
 
   async function handleBulkConfirm() {
@@ -311,7 +319,9 @@ export default function ArtifactsLibraryPage() {
     const { action, params, actionableIds } = pendingBulk;
     const ids = actionableIds;
     const body =
-      action === 'archive' ? { action: 'archive', ids } : { action, ids, ...params };
+      action === 'archive' || action === 'delete'
+        ? { action, ids }
+        : { action, ids, ...params };
 
     try {
       const res = await fetch('/api/artifacts/bulk', {

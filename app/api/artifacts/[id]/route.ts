@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth';
 import { getArtifact, updateArtifact } from '@/lib/db/artifacts';
+import { prisma } from '@/lib/db';
 import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 // Status changes must go through /api/artifacts/[id]/status
+// Archive (grooming) is handled here via { archive: true } — bypasses state machine
+// Hard delete is handled via DELETE
 
 export async function GET(
   _request: Request,
@@ -56,6 +59,17 @@ export async function PATCH(
       updateData.title = (body.title as string).trim();
     }
 
+    // Archive is a grooming action — bypasses state machine, works from any status.
+    // Early return intentionally ignores any other fields in the request body (title, tags, etc.).
+    // Callers must issue a separate PATCH to update other fields.
+    if (body.archive === true) {
+      const artifact = await prisma.artifact.update({
+        where: { id: params.id },
+        data: { status: 'archived' },
+      });
+      return NextResponse.json({ artifact });
+    }
+
     // Status changes must go through /api/artifacts/[id]/status for transition
     // enforcement and close-the-loop reminder side effects
     if (typeof body.status === 'string') {
@@ -93,6 +107,35 @@ export async function PATCH(
   } catch (err) {
     return NextResponse.json(
       { error: safeErrorMessage(err, 'Failed to update artifact') },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: { id: string } }
+) {
+  const auth = await requireRole('member');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const existing = await getArtifact(params.id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Artifact not found' }, { status: 404 });
+    }
+
+    // FK relations to PerformanceLog and ContentPiece use the Prisma default (SetNull),
+    // so those rows remain in the DB with artifactId nulled out — intentionally accepted.
+    // Child artifacts (versions) also have parentArtifactId nulled — their history is severed
+    // but they remain queryable as standalone artifacts.
+    await prisma.artifact.delete({ where: { id: params.id } });
+    return NextResponse.json({ deleted: true });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to delete artifact') },
       { status: 500 }
     );
   }
