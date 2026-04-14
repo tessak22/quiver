@@ -129,12 +129,12 @@ export async function POST(request: Request) {
       }
 
       case 'archive': {
-        const result = await bulkArchive(ids, auth.id);
+        const result = await bulkArchive(ids);
         return NextResponse.json({ result });
       }
 
       case 'delete': {
-        const result = await bulkDelete(ids, auth.id);
+        const result = await bulkDelete(ids);
         return NextResponse.json({ result });
       }
 

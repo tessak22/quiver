@@ -295,8 +295,7 @@ export async function bulkRemoveTags(
 
 /** Bulk archive — grooming action, bypasses state machine. Works on any status. */
 export async function bulkArchive(
-  ids: string[],
-  _userId: string
+  ids: string[]
 ): Promise<BulkOperationResult> {
   const { found, missing } = await resolveArtifacts(ids);
 
@@ -320,8 +319,8 @@ export async function bulkArchive(
   }
 }
 
-/** Bulk delete — hard deletes artifacts. Irreversible. userId is accepted for future audit use. */
-export async function bulkDelete(ids: string[], _userId: string): Promise<BulkOperationResult> {
+/** Bulk delete — hard deletes artifacts. Irreversible. Add userId param here when audit logging is implemented. */
+export async function bulkDelete(ids: string[]): Promise<BulkOperationResult> {
   const { found, missing } = await resolveArtifacts(ids);
 
   const failed: Array<{ id: string; reason: string }> = missing.map((id) => ({
