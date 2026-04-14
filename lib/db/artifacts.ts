@@ -128,7 +128,7 @@ export async function getArtifacts(filters?: {
 
 export async function updateArtifact(
   id: string,
-  data: { title?: string; status?: string; tags?: string[]; content?: string }
+  data: { title?: string; status?: string; tags?: string[]; content?: string; type?: string; campaignId?: string }
 ) {
   return prisma.artifact.update({
     where: { id },

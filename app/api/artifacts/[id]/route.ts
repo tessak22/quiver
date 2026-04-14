@@ -53,7 +53,7 @@ export async function PATCH(
     const body = parsed.data;
 
     // Build the update payload from allowed fields
-    const updateData: { title?: string; status?: string; tags?: string[]; content?: string } = {};
+    const updateData: { title?: string; status?: string; tags?: string[]; content?: string; type?: string; campaignId?: string } = {};
 
     if (typeof body.title === 'string' && (body.title as string).trim()) {
       updateData.title = (body.title as string).trim();
@@ -92,6 +92,18 @@ export async function PATCH(
 
     if (typeof body.content === 'string') {
       updateData.content = body.content as string;
+    }
+
+    if (typeof body.type === 'string' && (body.type as string).trim()) {
+      updateData.type = (body.type as string).trim();
+    }
+
+    if (typeof body.campaignId === 'string' && (body.campaignId as string).trim()) {
+      const campaign = await prisma.campaign.findUnique({ where: { id: body.campaignId as string } });
+      if (!campaign) {
+        return NextResponse.json({ error: 'Campaign not found' }, { status: 400 });
+      }
+      updateData.campaignId = body.campaignId as string;
     }
 
     if (Object.keys(updateData).length === 0) {
