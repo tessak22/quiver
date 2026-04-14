@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -356,6 +356,7 @@ function ArtifactSaveBanner({
 
 export default function SessionChatPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   // Determine if this is a new session (route: /sessions/new-chat?mode=...)
@@ -367,11 +368,12 @@ export default function SessionChatPage() {
   const initialMode = searchParams.get('mode') as SessionMode | null;
   const initialArtifactType = searchParams.get('artifactType') as ArtifactType | null;
   const initialCampaignId = searchParams.get('campaignId');
+  const initialMessage = searchParams.get('initialMessage') ?? '';
 
   // State
   const [session, setSession] = useState<SessionData | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState(initialMessage);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -390,6 +392,7 @@ export default function SessionChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const autoSentRef = useRef(false);
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -435,6 +438,33 @@ export default function SessionChatPage() {
       fetchSession(routeId, true);
     }
   }, [isNewSession, routeId, fetchSession]);
+
+  // Stable ref to the latest handleSendMessage — lets the one-shot effect below
+  // call the up-to-date function without needing it in deps.
+  const handleSendMessageRef = useRef<() => void>(() => {});
+  useLayoutEffect(() => {
+    handleSendMessageRef.current = handleSendMessage;
+  });
+
+  // Auto-send the initial message when arriving from the new session page.
+  // Strips initialMessage from the URL immediately so:
+  //   (a) back-navigation doesn't re-trigger a second auto-send, and
+  //   (b) React Strict Mode remounts see initialMessage='' and skip the guard.
+  useEffect(() => {
+    if (!isNewSession || !initialMessage) return;
+
+    // Strip param before firing so remounts don't re-send
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete('initialMessage');
+    router.replace(`/sessions/new-chat?${next.toString()}`);
+
+    if (!autoSentRef.current) {
+      autoSentRef.current = true;
+      const timer = setTimeout(() => handleSendMessageRef.current(), 0);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot on mount
+  }, []);
 
   // Determine the mode for display and API calls
   const currentMode: SessionMode = (session?.mode as SessionMode) ?? initialMode ?? 'strategy';

@@ -180,6 +180,8 @@ export default function NewSessionPage() {
     params.set('mode', selectedMode);
     if (artifactType) params.set('artifactType', artifactType);
     if (campaignId) params.set('campaignId', campaignId);
+    // Carry the intent prompt through so the chat page auto-sends it as the first message
+    if (intentPrompt.trim()) params.set('initialMessage', intentPrompt.trim());
 
     router.push(`/sessions/new-chat?${params.toString()}`);
   }
