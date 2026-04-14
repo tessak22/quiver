@@ -27,6 +27,14 @@ export type ArtifactType =
   | 'one_pager'
   | 'other';
 
+// Runtime-usable whitelist of all valid artifact types (mirrors ArtifactType union above)
+export const ARTIFACT_TYPES: ArtifactType[] = [
+  'copywriting', 'email_sequence', 'cold_email', 'social_content',
+  'launch_strategy', 'content_strategy', 'positioning', 'messaging',
+  'ad_creative', 'competitor_analysis', 'seo', 'cro', 'ab_test',
+  'landing_page', 'one_pager', 'other',
+];
+
 // Artifact status workflow: Draft → Review → Approved → Live → Archived
 export type ArtifactStatus = 'draft' | 'review' | 'approved' | 'live' | 'archived';
 

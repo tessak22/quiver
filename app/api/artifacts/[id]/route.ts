@@ -3,6 +3,7 @@ import { requireRole } from '@/lib/auth';
 import { getArtifact, updateArtifact } from '@/lib/db/artifacts';
 import { prisma } from '@/lib/db';
 import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
+import { ARTIFACT_TYPES } from '@/types';
 // Status changes must go through /api/artifacts/[id]/status
 // Archive (grooming) is handled here via { archive: true } — bypasses state machine
 // Hard delete is handled via DELETE
@@ -94,8 +95,12 @@ export async function PATCH(
       updateData.content = body.content as string;
     }
 
-    if (typeof body.type === 'string' && (body.type as string).trim()) {
-      updateData.type = (body.type as string).trim();
+    if (typeof body.type === 'string') {
+      const trimmedType = (body.type as string).trim();
+      if (!ARTIFACT_TYPES.includes(trimmedType as (typeof ARTIFACT_TYPES)[number])) {
+        return NextResponse.json({ error: 'Invalid artifact type' }, { status: 400 });
+      }
+      updateData.type = trimmedType;
     }
 
     if (typeof body.campaignId === 'string' && (body.campaignId as string).trim()) {
