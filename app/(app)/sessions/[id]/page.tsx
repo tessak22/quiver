@@ -367,11 +367,12 @@ export default function SessionChatPage() {
   const initialMode = searchParams.get('mode') as SessionMode | null;
   const initialArtifactType = searchParams.get('artifactType') as ArtifactType | null;
   const initialCampaignId = searchParams.get('campaignId');
+  const initialMessage = searchParams.get('initialMessage') ?? '';
 
   // State
   const [session, setSession] = useState<SessionData | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState(initialMessage);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -390,6 +391,7 @@ export default function SessionChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const autoSentRef = useRef(false);
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -435,6 +437,18 @@ export default function SessionChatPage() {
       fetchSession(routeId, true);
     }
   }, [isNewSession, routeId, fetchSession]);
+
+  // Auto-send the initial message when arriving from the new session page
+  useEffect(() => {
+    if (isNewSession && initialMessage && !autoSentRef.current) {
+      autoSentRef.current = true;
+      // Defer one tick so the component is fully mounted before sending
+      const timer = setTimeout(() => handleSendMessage(), 0);
+      return () => clearTimeout(timer);
+    }
+    // handleSendMessage is intentionally omitted from deps — we only want this to fire once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Determine the mode for display and API calls
   const currentMode: SessionMode = (session?.mode as SessionMode) ?? initialMode ?? 'strategy';
