@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -356,6 +356,7 @@ function ArtifactSaveBanner({
 
 export default function SessionChatPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   // Determine if this is a new session (route: /sessions/new-chat?mode=...)
@@ -438,16 +439,31 @@ export default function SessionChatPage() {
     }
   }, [isNewSession, routeId, fetchSession]);
 
-  // Auto-send the initial message when arriving from the new session page
+  // Stable ref to the latest handleSendMessage — lets the one-shot effect below
+  // call the up-to-date function without needing it in deps.
+  const handleSendMessageRef = useRef<() => void>(() => {});
+  useLayoutEffect(() => {
+    handleSendMessageRef.current = handleSendMessage;
+  });
+
+  // Auto-send the initial message when arriving from the new session page.
+  // Strips initialMessage from the URL immediately so:
+  //   (a) back-navigation doesn't re-trigger a second auto-send, and
+  //   (b) React Strict Mode remounts see initialMessage='' and skip the guard.
   useEffect(() => {
-    if (isNewSession && initialMessage && !autoSentRef.current) {
+    if (!isNewSession || !initialMessage) return;
+
+    // Strip param before firing so remounts don't re-send
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete('initialMessage');
+    router.replace(`/sessions/new-chat?${next.toString()}`);
+
+    if (!autoSentRef.current) {
       autoSentRef.current = true;
-      // Defer one tick so the component is fully mounted before sending
-      const timer = setTimeout(() => handleSendMessage(), 0);
+      const timer = setTimeout(() => handleSendMessageRef.current(), 0);
       return () => clearTimeout(timer);
     }
-    // handleSendMessage is intentionally omitted from deps — we only want this to fire once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot on mount
   }, []);
 
   // Determine the mode for display and API calls
