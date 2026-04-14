@@ -2,7 +2,7 @@
  * POST /api/artifacts/bulk
  *
  * What it does: Applies a bulk action to a set of artifact IDs.
- *   Supported actions: status_change, campaign_reassign, add_tags, remove_tags, archive.
+ *   Supported actions: status_change, campaign_reassign, add_tags, remove_tags, archive, delete.
  *
  * What it reads from: request body (discriminated by `action` field)
  * What it produces: { result: BulkOperationResult }
@@ -25,6 +25,7 @@ import {
   bulkAddTags,
   bulkRemoveTags,
   bulkArchive,
+  bulkDelete,
   MAX_BULK_IDS,
   normalizeBulkTags,
 } from '@/lib/db/artifacts-bulk';
@@ -132,11 +133,16 @@ export async function POST(request: Request) {
         return NextResponse.json({ result });
       }
 
+      case 'delete': {
+        const result = await bulkDelete(ids, auth.id);
+        return NextResponse.json({ result });
+      }
+
       default:
         return NextResponse.json(
           {
             error:
-              'Unknown action. Must be one of: status_change, campaign_reassign, add_tags, remove_tags, archive',
+              'Unknown action. Must be one of: status_change, campaign_reassign, add_tags, remove_tags, archive, delete',
           },
           { status: 400 }
         );

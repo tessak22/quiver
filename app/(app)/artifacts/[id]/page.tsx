@@ -13,6 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { ArtifactType, ArtifactStatus, PerformanceSignal } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -177,6 +185,9 @@ export default function ArtifactDetailPage() {
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
 
   const fetchArtifact = useCallback(async () => {
@@ -294,6 +305,43 @@ export default function ArtifactDetailPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to duplicate artifact');
       setDuplicating(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (!artifact) return;
+    setArchiving(true);
+    try {
+      const res = await fetch(`/api/artifacts/${artifact.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archive: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        throw new Error(data.error ?? 'Failed to archive artifact');
+      }
+      router.push('/artifacts');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to archive artifact');
+      setArchiving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!artifact) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/artifacts/${artifact.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        throw new Error(data.error ?? 'Failed to delete artifact');
+      }
+      router.push('/artifacts');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete artifact');
+      setDeleting(false);
+      setDeleteConfirmOpen(false);
     }
   }
 
@@ -463,8 +511,44 @@ export default function ArtifactDetailPage() {
               >
                 {duplicating ? 'Duplicating...' : 'Duplicate'}
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={handleArchive}
+                disabled={archiving || artifact.status === 'archived'}
+              >
+                {archiving ? 'Archiving...' : 'Archive'}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => setDeleteConfirmOpen(true)}
+              >
+                Delete
+              </Button>
             </CardContent>
           </Card>
+
+          <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete artifact?</DialogTitle>
+                <DialogDescription>
+                  &ldquo;{artifact.title}&rdquo; will be permanently deleted. This cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+                  {deleting ? 'Deleting...' : 'Delete permanently'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Status transition */}
           {validTransitions.length > 0 && (
