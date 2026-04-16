@@ -120,12 +120,16 @@ export async function getContentPieces(filters?: {
   status?: string;
   contentType?: string;
   campaignId?: string;
+  excludeArchived?: boolean;
 }) {
   return prisma.contentPiece.findMany({
     where: {
       status: filters?.status,
       contentType: filters?.contentType,
       campaignId: filters?.campaignId,
+      ...(filters?.excludeArchived && !filters?.status
+        ? { NOT: { status: 'archived' } }
+        : {}),
     },
     include: {
       campaign: { select: { id: true, name: true } },

@@ -11,6 +11,8 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const status = url.searchParams.get('status') as CampaignStatus | null;
+  const includeArchived = url.searchParams.get('includeArchived') === 'true';
+  const excludeArchived = !includeArchived && !status;
 
   if (status && !CAMPAIGN_STATUSES.includes(status)) {
     return NextResponse.json({ error: 'Invalid status filter' }, { status: 400 });
@@ -19,6 +21,7 @@ export async function GET(request: Request) {
   try {
     const campaigns = await getCampaigns({
       status: status ?? undefined,
+      excludeArchived,
     });
 
     return NextResponse.json({ campaigns });

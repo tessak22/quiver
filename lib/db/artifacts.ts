@@ -99,12 +99,16 @@ export async function getArtifacts(filters?: {
   campaignId?: string;
   status?: string;
   search?: string;
+  excludeArchived?: boolean;
 }) {
   return prisma.artifact.findMany({
     where: {
       type: filters?.type,
       campaignId: filters?.campaignId,
       status: filters?.status,
+      ...(filters?.excludeArchived && !filters?.status
+        ? { NOT: { status: 'archived' } }
+        : {}),
       ...(filters?.search
         ? {
             OR: [

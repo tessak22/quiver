@@ -67,10 +67,14 @@ export async function GET(request: Request) {
       );
     }
 
+    const includeArchived = url.searchParams.get('includeArchived') === 'true';
+    const excludeArchived = !includeArchived && !parsedFilters.data.status;
+
     const pieces = await getContentPieces({
       status: parsedFilters.data.status,
       contentType: parsedFilters.data.contentType,
       campaignId: parsedFilters.data.campaignId,
+      excludeArchived,
     });
 
     const results = pieces.map((piece) => ({

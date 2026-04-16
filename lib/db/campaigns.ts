@@ -26,6 +26,7 @@ import type { CampaignStatus, CampaignPriority } from '@/types';
 
 interface CampaignFilters {
   status?: CampaignStatus;
+  excludeArchived?: boolean;
 }
 
 export interface CampaignLink {
@@ -97,6 +98,9 @@ export async function getCampaigns(filters?: CampaignFilters) {
   return prisma.campaign.findMany({
     where: {
       status: filters?.status,
+      ...(filters?.excludeArchived && !filters?.status
+        ? { NOT: { status: 'archived' } }
+        : {}),
     },
     orderBy: { updatedAt: 'desc' },
     include: {
