@@ -176,6 +176,31 @@ export function registerContentTools(server: McpServer) {
         const campaignId = await resolveCampaignId(args.campaign_id, args.campaign_name);
         const activeContext = await getActiveContext();
 
+        // 60s dedupe guard — if a matching content piece was just created,
+        // return it instead of inserting a duplicate (handles Claude Desktop retries).
+        const recentDuplicate = await prisma.contentPiece.findFirst({
+          where: {
+            title: args.title,
+            contentType: args.content_type,
+            createdBy: 'mcp',
+            createdAt: { gte: new Date(Date.now() - 60_000) },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (recentDuplicate) {
+          return text(
+            JSON.stringify(
+              {
+                ...recentDuplicate,
+                _duplicate: true,
+                public_api_url: `/api/public/content/${recentDuplicate.slug}`,
+              },
+              null,
+              2
+            )
+          );
+        }
+
         const slug = args.slug || await generateSlug(args.title);
 
         const piece = await createContentPiece({

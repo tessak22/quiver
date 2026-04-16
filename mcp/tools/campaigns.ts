@@ -144,6 +144,19 @@ export function registerCampaignTools(server: McpServer) {
     },
     async ({ name, description, goal, channels, priority, start_date, end_date }) => {
       try {
+        // 60s dedupe guard — if a matching campaign was just created, return it
+        // instead of inserting a duplicate (handles Claude Desktop retries).
+        const recentDuplicate = await prisma.campaign.findFirst({
+          where: {
+            name,
+            createdAt: { gte: new Date(Date.now() - 60_000) },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (recentDuplicate) {
+          return text(JSON.stringify({ ...recentDuplicate, _duplicate: true }, null, 2));
+        }
+
         const campaign = await createCampaign({
           name,
           description,

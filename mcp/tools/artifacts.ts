@@ -169,6 +169,21 @@ export function registerArtifactTools(server: McpServer) {
           }));
         }
 
+        // 60s dedupe guard — if a matching artifact was just created, return it
+        // instead of inserting a duplicate (handles Claude Desktop retries).
+        const recentDuplicate = await prisma.artifact.findFirst({
+          where: {
+            campaignId: resolvedCampaignId!,
+            title,
+            type,
+            createdAt: { gte: new Date(Date.now() - 60_000) },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (recentDuplicate) {
+          return text(JSON.stringify({ ...recentDuplicate, _duplicate: true }, null, 2));
+        }
+
         const artifact = await createArtifact({
           title,
           type,
