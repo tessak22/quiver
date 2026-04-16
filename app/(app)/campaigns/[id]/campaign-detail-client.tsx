@@ -781,13 +781,16 @@ export default function CampaignDetailClientPage({
     }
   }
 
-  // Archive handler
+  // Archive handler — PATCH with status: 'archived' (reversible via status change).
+  // DELETE is now a true hard delete — handled separately.
   async function handleArchive() {
-    if (!confirm('Are you sure you want to archive this campaign? This cannot be undone.')) return;
+    if (!confirm('Archive this campaign? It will be hidden from default views but can be restored.')) return;
 
     try {
       const res = await fetch(`/api/campaigns/${campaignId}`, {
-        method: 'DELETE',
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'archived' }),
       });
 
       if (!res.ok) {
