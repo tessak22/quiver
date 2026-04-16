@@ -368,6 +368,7 @@ export default function SessionChatPage() {
   const initialMode = searchParams.get('mode') as SessionMode | null;
   const initialArtifactType = searchParams.get('artifactType') as ArtifactType | null;
   const initialCampaignId = searchParams.get('campaignId');
+  const initialExtraSkills = searchParams.get('extraSkills');
   const initialMessage = searchParams.get('initialMessage') ?? '';
 
   // State
@@ -392,6 +393,7 @@ export default function SessionChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const extraSkillsSentRef = useRef(false);
   const autoSentRef = useRef(false);
 
   // Scroll to bottom when messages change
@@ -509,6 +511,15 @@ export default function SessionChatPage() {
       if (initialCampaignId) {
         payload.campaignId = initialCampaignId;
       }
+      // Attach extraSkills only on the first new-session send. The ref flips
+      // AFTER session_id arrives (see SSE handler below) so a failed first
+      // send can be retried without dropping the user's selections.
+      if (isNewSession && initialExtraSkills && !extraSkillsSentRef.current) {
+        payload.extraSkills = initialExtraSkills
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
 
       const res = await fetch('/api/sessions/stream', {
         method: 'POST',
@@ -554,6 +565,9 @@ export default function SessionChatPage() {
             switch (event.type) {
               case 'session_id': {
                 setSessionId(event.sessionId);
+                // The session was successfully created with our extraSkills
+                // baked into skillsLoaded — safe to stop sending them now.
+                extraSkillsSentRef.current = true;
                 // Update URL without full navigation for new sessions
                 if (isNewSession) {
                   window.history.replaceState(

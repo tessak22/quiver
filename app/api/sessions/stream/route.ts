@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth';
 import { createStream } from '@/lib/ai/client';
 import { assembleSystemPrompt } from '@/lib/ai/session';
+import { isValidSkillName } from '@/lib/ai/skills';
 import { createSession, getSession, appendMessage } from '@/lib/db/sessions';
 import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 import { aiRateLimiter } from '@/lib/rate-limit';
@@ -148,16 +149,40 @@ export async function POST(request: Request) {
   const parsed = await parseJsonBody(request);
   if (parsed.error) return parsed.error;
 
-  const { sessionId, message, mode, artifactType, campaignId } = parsed.data as {
+  const { sessionId, message, mode, artifactType, campaignId, extraSkills } = parsed.data as {
     sessionId?: string;
     message: string;
     mode: SessionMode;
     artifactType?: ArtifactType;
     campaignId?: string;
+    extraSkills?: string[];
   };
 
   if (!message || typeof message !== 'string') {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+  }
+
+  // Validate extraSkills at the boundary so malformed names produce a 400
+  // instead of bubbling into a 500 from loadSkills().
+  let validatedExtraSkills: string[] | undefined;
+  if (extraSkills !== undefined) {
+    if (!Array.isArray(extraSkills)) {
+      return NextResponse.json(
+        { error: 'extraSkills must be an array of skill names.' },
+        { status: 400 }
+      );
+    }
+    const stringNames = extraSkills.filter((s): s is string => typeof s === 'string');
+    const invalid = stringNames.find((s) => !isValidSkillName(s));
+    if (invalid !== undefined) {
+      return NextResponse.json(
+        {
+          error: `Invalid skill name "${invalid}". Skill names may only contain letters, numbers, hyphens, and underscores.`,
+        },
+        { status: 400 }
+      );
+    }
+    validatedExtraSkills = stringNames;
   }
 
   try {
@@ -183,6 +208,7 @@ export async function POST(request: Request) {
         mode,
         artifactType,
         campaignId,
+        extraInstalledSkillNames: validatedExtraSkills,
       });
 
     // 6. Create session if new

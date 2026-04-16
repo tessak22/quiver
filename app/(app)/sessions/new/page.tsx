@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -91,6 +92,12 @@ interface CampaignRecord {
   name: string;
 }
 
+interface InstalledSkillOption {
+  id: string;
+  name: string;
+  description: string;
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -104,6 +111,10 @@ export default function NewSessionPage() {
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [starting, setStarting] = useState(false);
+
+  const [enabledSkills, setEnabledSkills] = useState<InstalledSkillOption[]>([]);
+  const [skillsExpanded, setSkillsExpanded] = useState(false);
+  const [selectedExtraSkills, setSelectedExtraSkills] = useState<string[]>([]);
 
   // Intent detection state
   const [intentPrompt, setIntentPrompt] = useState('');
@@ -133,6 +144,22 @@ export default function NewSessionPage() {
   useEffect(() => {
     fetchCampaigns();
   }, [fetchCampaigns]);
+
+  const fetchEnabledSkills = useCallback(async () => {
+    try {
+      const res = await fetch('/api/skills?enabled=true');
+      if (res.ok) {
+        const data = (await res.json()) as { skills: InstalledSkillOption[] };
+        setEnabledSkills(data.skills);
+      }
+    } catch {
+      // Optional list — silently ignore.
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEnabledSkills();
+  }, [fetchEnabledSkills]);
 
   const canStart = selectedMode !== null && (selectedMode !== 'create' || artifactType !== undefined);
 
@@ -180,6 +207,9 @@ export default function NewSessionPage() {
     params.set('mode', selectedMode);
     if (artifactType) params.set('artifactType', artifactType);
     if (campaignId) params.set('campaignId', campaignId);
+    if (selectedExtraSkills.length > 0) {
+      params.set('extraSkills', selectedExtraSkills.join(','));
+    }
     // Carry the intent prompt through so the chat page auto-sends it as the first message
     if (intentPrompt.trim()) params.set('initialMessage', intentPrompt.trim());
 
@@ -358,6 +388,69 @@ export default function NewSessionPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Additional skills — collapsed by default */}
+      {enabledSkills.length > 0 && (
+        <div className="space-y-2">
+          {!skillsExpanded ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-sm"
+              onClick={() => setSkillsExpanded(true)}
+            >
+              + Add skills
+            </Button>
+          ) : (
+            <div className="space-y-2 rounded-md border p-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-medium">Additional skills</Label>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs text-muted-foreground"
+                  onClick={() => setSkillsExpanded(false)}
+                >
+                  Collapse
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Layered on top of the mode-default skills for this session only.
+              </p>
+              <ul className="space-y-2">
+                {enabledSkills.map((skill) => {
+                  const checked = selectedExtraSkills.includes(skill.name);
+                  return (
+                    <li key={skill.id} className="flex items-start gap-2">
+                      <Checkbox
+                        id={`extra-skill-${skill.id}`}
+                        className="mt-1"
+                        checked={checked}
+                        onCheckedChange={(state) => {
+                          const isChecked = state === true;
+                          setSelectedExtraSkills((prev) =>
+                            isChecked
+                              ? [...prev, skill.name]
+                              : prev.filter((n) => n !== skill.name)
+                          );
+                        }}
+                      />
+                      <label htmlFor={`extra-skill-${skill.id}`} className="space-y-0.5 cursor-pointer">
+                        <span className="text-sm font-medium">{skill.name}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {skill.description}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Start Button */}
       <div className="flex justify-end">

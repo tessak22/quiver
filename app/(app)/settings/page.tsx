@@ -55,6 +55,17 @@ interface SkillsInfo {
   skillNames: string[];
 }
 
+interface InstalledSkillRecord {
+  id: string;
+  name: string;
+  description: string;
+  githubRepo: string | null;
+  githubRef: string | null;
+  isEnabled: boolean;
+  lastFetchedAt: string;
+  fetchError: string | null;
+}
+
 interface CurrentUser {
   id: string;
   role: TeamRole;
@@ -130,6 +141,16 @@ export default function SettingsPage() {
   const [skillsUpdateBusy, setSkillsUpdateBusy] = useState(false);
   const [skillsUpdateMsg, setSkillsUpdateMsg] = useState<string | null>(null);
 
+  // Installed skills
+  const [installedSkills, setInstalledSkills] = useState<InstalledSkillRecord[]>([]);
+  const [installRepo, setInstallRepo] = useState('');
+  const [installRef, setInstallRef] = useState('');
+  const [installAdvanced, setInstallAdvanced] = useState(false);
+  const [installBusy, setInstallBusy] = useState(false);
+  const [installMsg, setInstallMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [skillBusy, setSkillBusy] = useState<{ id: string; op: 'toggle' | 'update' | 'remove' } | null>(null);
+  const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
+
   // Notification prefs
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({});
   const [notifPrefsBusy, setNotifPrefsBusy] = useState(false);
@@ -149,9 +170,10 @@ export default function SettingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [teamRes, skillsRes] = await Promise.all([
+      const [teamRes, skillsRes, installedRes] = await Promise.all([
         fetch('/api/team'),
         fetch('/api/settings/skills'),
+        fetch('/api/skills'),
       ]);
 
       if (!teamRes.ok) throw new Error('Failed to load team data');
@@ -159,9 +181,13 @@ export default function SettingsPage() {
 
       const teamData = (await teamRes.json()) as { members: TeamMemberRecord[] };
       const skillsData = (await skillsRes.json()) as SkillsInfo;
-
       setMembers(teamData.members);
       setSkills(skillsData);
+
+      if (installedRes.ok) {
+        const data = (await installedRes.json()) as { skills: InstalledSkillRecord[] };
+        setInstalledSkills(data.skills);
+      }
 
       // Check API key status from server
       const keyRes = await fetch('/api/settings/api-key-status');
@@ -333,6 +359,97 @@ export default function SettingsPage() {
     } finally {
       setSkillsUpdateBusy(false);
     }
+  }
+
+  // ---- Install skill handler ----
+  async function handleInstallSkill() {
+    if (!isAdmin) return;
+    setInstallBusy(true);
+    setInstallMsg(null);
+    try {
+      const res = await fetch('/api/skills/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          githubRepo: installRepo.trim(),
+          ref: installRef.trim() || undefined,
+        }),
+      });
+      const data = (await res.json()) as { skill?: InstalledSkillRecord; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Install failed');
+      }
+      if (data.skill) {
+        const skill = data.skill;
+        setInstalledSkills((prev) => [...prev, skill].sort((a, b) => a.name.localeCompare(b.name)));
+        setInstallMsg({ kind: 'success', text: `${skill.name} installed.` });
+        setInstallRepo('');
+        setInstallRef('');
+      }
+    } catch (err) {
+      setInstallMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Install failed' });
+    } finally {
+      setInstallBusy(false);
+    }
+  }
+
+  async function handleToggleSkill(id: string) {
+    setSkillBusy({ id, op: 'toggle' });
+    try {
+      const res = await fetch(`/api/skills/${id}/toggle`, { method: 'POST' });
+      const data = (await res.json()) as { skill?: InstalledSkillRecord; error?: string };
+      if (!res.ok || !data.skill) throw new Error(data.error ?? 'Toggle failed');
+      const updated = data.skill;
+      setInstalledSkills((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Toggle failed');
+    } finally {
+      setSkillBusy(null);
+    }
+  }
+
+  async function handleUpdateSkill(id: string) {
+    setSkillBusy({ id, op: 'update' });
+    try {
+      const res = await fetch(`/api/skills/${id}`, { method: 'PATCH' });
+      const data = (await res.json()) as { skill?: InstalledSkillRecord; error?: string };
+      if (!res.ok || !data.skill) throw new Error(data.error ?? 'Update failed');
+      const updated = data.skill;
+      setInstalledSkills((prev) => prev.map((s) => (s.id === id ? updated : s)));
+      toast.success('Skill updated.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setSkillBusy(null);
+    }
+  }
+
+  async function handleRemoveSkill(id: string) {
+    setSkillBusy({ id, op: 'remove' });
+    try {
+      const res = await fetch(`/api/skills/${id}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Remove failed');
+      }
+      setInstalledSkills((prev) => prev.filter((s) => s.id !== id));
+      setRemoveConfirmId(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Remove failed');
+    } finally {
+      setSkillBusy(null);
+    }
+  }
+
+  function formatRelativeTime(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    const minutes = Math.round(diff / 60_000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} hr ago`;
+    const days = Math.round(hours / 24);
+    return `${days} day${days === 1 ? '' : 's'} ago`;
   }
 
   // ---- Render ----
@@ -643,77 +760,217 @@ export default function SettingsPage() {
         {/* ================================================================
             Skills Management
             ================================================================ */}
-        <TabsContent value="skills">
+        <TabsContent value="skills" className="space-y-6">
+          {/* Built-in skills (existing block, relabeled) */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-xl">Skills</CardTitle>
+              <CardTitle className="text-xl">Built-in skills</CardTitle>
               <CardDescription>
-                AI skill packs loaded into this Quiver instance.
+                Marketing skill packs that ship with Quiver.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Pinned version */}
               <div className="space-y-2">
                 <Label>Pinned Version</Label>
                 <div className="flex items-center gap-3">
                   <code className="rounded bg-muted px-3 py-2 font-mono text-sm">
                     {skills?.pinnedVersion ?? 'unknown'}
                   </code>
-                  <Badge variant="secondary">
-                    {skills?.skillCount ?? 0} skills loaded
-                  </Badge>
+                  <Badge variant="secondary">{skills?.skillCount ?? 0} skills loaded</Badge>
                 </div>
               </div>
 
               <Separator />
 
-              {/* Skills list */}
               <div className="space-y-2">
                 <Label>Loaded Skills</Label>
                 {skills && skills.skillNames.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {skills.skillNames.map((name) => (
-                      <Badge key={name} variant="outline">
-                        {formatSkillName(name)}
-                      </Badge>
+                      <Badge key={name} variant="outline">{formatSkillName(name)}</Badge>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No skills found in the skills directory.
-                  </p>
+                  <p className="text-sm text-muted-foreground">No skills found in the skills directory.</p>
                 )}
               </div>
 
               <Separator />
 
-              {/* Update button (admin only) */}
               {isAdmin ? (
                 <div className="space-y-3">
-                  <Button
-                    onClick={handleSkillsUpdate}
-                    disabled={skillsUpdateBusy}
-                  >
-                    {skillsUpdateBusy
-                      ? 'Checking for updates...'
-                      : 'Update skills'}
+                  <Button onClick={handleSkillsUpdate} disabled={skillsUpdateBusy}>
+                    {skillsUpdateBusy ? 'Checking for updates...' : 'Update skills'}
                   </Button>
                   {skillsUpdateMsg && (
-                    <p className="text-sm text-muted-foreground">
-                      {skillsUpdateMsg}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{skillsUpdateMsg}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Pulls the latest skill definitions from the upstream GitHub
-                    repository.
+                    Pulls the latest skill definitions from the upstream GitHub repository.
                   </p>
                 </div>
               ) : (
                 currentUser && (
-                  <p className="text-sm text-muted-foreground italic">
-                    Only admins can update skills.
-                  </p>
+                  <p className="text-sm text-muted-foreground italic">Only admins can update skills.</p>
                 )
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Installed skills */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Installed skills</CardTitle>
+              <CardDescription>
+                Skills installed from public GitHub repositories. Each is layered on top of the built-in set.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {installedSkills.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No skills installed yet. Install a skill from any public GitHub repo that includes a SKILL.md file.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border rounded-md border">
+                  {installedSkills.map((skill) => {
+                    const busyOp = skillBusy?.id === skill.id ? skillBusy.op : null;
+                    const isBusy = busyOp !== null;
+                    const showRemoveConfirm = removeConfirmId === skill.id;
+                    return (
+                      <li key={skill.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">{skill.name}</span>
+                            {!skill.isEnabled && <Badge variant="outline">Disabled</Badge>}
+                            {skill.fetchError && (
+                              <Badge variant="destructive" title={skill.fetchError}>
+                                Update error
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="line-clamp-1 text-sm text-muted-foreground">{skill.description}</p>
+                          {skill.githubRepo && (
+                            <p className="text-xs text-muted-foreground">
+                              <a
+                                href={`https://github.com/${skill.githubRepo}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline"
+                              >
+                                {skill.githubRepo}
+                              </a>
+                              {' · '}
+                              fetched {formatRelativeTime(skill.lastFetchedAt)}
+                            </p>
+                          )}
+                        </div>
+                        {isAdmin && (
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={skill.isEnabled}
+                              onCheckedChange={() => handleToggleSkill(skill.id)}
+                              disabled={isBusy}
+                              aria-label={`Toggle ${skill.name}`}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleUpdateSkill(skill.id)}
+                              disabled={isBusy}
+                            >
+                              {busyOp === 'update' ? 'Updating...' : 'Update'}
+                            </Button>
+                            {showRemoveConfirm ? (
+                              <>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleRemoveSkill(skill.id)}
+                                  disabled={isBusy}
+                                >
+                                  Yes, remove
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setRemoveConfirmId(null)}
+                                  disabled={isBusy}
+                                >
+                                  Cancel
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setRemoveConfirmId(skill.id)}
+                                disabled={isBusy}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {isAdmin && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <h3 className="text-base font-semibold">Install a skill from GitHub</h3>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="flex-1 space-y-1.5">
+                        <Label htmlFor="install-repo">GitHub repo</Label>
+                        <Input
+                          id="install-repo"
+                          placeholder="owner/repo (e.g. tessak22/devrel-growth-advisor)"
+                          value={installRepo}
+                          onChange={(e) => setInstallRepo(e.target.value)}
+                          disabled={installBusy}
+                        />
+                      </div>
+                      <Button onClick={handleInstallSkill} disabled={installBusy || !installRepo.trim()}>
+                        {installBusy ? 'Installing...' : 'Install'}
+                      </Button>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs text-muted-foreground"
+                      onClick={() => setInstallAdvanced((v) => !v)}
+                    >
+                      {installAdvanced ? 'Hide advanced' : 'Advanced'}
+                    </Button>
+                    {installAdvanced && (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="install-ref">Branch or tag</Label>
+                        <Input
+                          id="install-ref"
+                          placeholder="main"
+                          value={installRef}
+                          onChange={(e) => setInstallRef(e.target.value)}
+                          disabled={installBusy}
+                        />
+                      </div>
+                    )}
+                    {installMsg && (
+                      <p
+                        className={
+                          installMsg.kind === 'success'
+                            ? 'text-sm text-green-700 dark:text-green-400'
+                            : 'text-sm text-destructive'
+                        }
+                      >
+                        {installMsg.text}
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

@@ -6,42 +6,48 @@
  * needed for file I/O — we validate against the actual skill content.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { loadSkills, loadSkillsForMode, getSkillNamesForMode } from '@/lib/ai/skills';
 import type { SessionMode, ArtifactType } from '@/types';
+
+// Mock the DB layer — skills.test.ts exercises filesystem loading via real
+// SKILL.md files; DB-installed skills are tested separately in installed-skills.test.ts.
+vi.mock('@/lib/db/installed-skills', () => ({
+  getInstalledSkillByName: vi.fn().mockResolvedValue(null),
+}));
 
 // ---------------------------------------------------------------------------
 // loadSkills — loads specific skills by name
 // ---------------------------------------------------------------------------
 
 describe('loadSkills', () => {
-  it('loads a single skill and wraps it with a section header', () => {
-    const result = loadSkills(['copywriting']);
+  it('loads a single skill and wraps it with a section header', async () => {
+    const result = await loadSkills(['copywriting']);
     expect(result).toContain('## Skill: copywriting');
     // The real SKILL.md starts with YAML front-matter (---)
     expect(result.length).toBeGreaterThan(100);
   });
 
-  it('loads multiple skills separated by dividers', () => {
-    const result = loadSkills(['copywriting', 'page-cro']);
+  it('loads multiple skills separated by dividers', async () => {
+    const result = await loadSkills(['copywriting', 'page-cro']);
     expect(result).toContain('## Skill: copywriting');
     expect(result).toContain('## Skill: page-cro');
     expect(result).toContain('---');
   });
 
-  it('returns empty string for an empty array', () => {
-    const result = loadSkills([]);
+  it('returns empty string for an empty array', async () => {
+    const result = await loadSkills([]);
     expect(result).toBe('');
   });
 
-  it('throws a descriptive error for a missing skill', () => {
-    expect(() => loadSkills(['nonexistent-skill'])).toThrow(
+  it('throws a descriptive error for a missing skill', async () => {
+    await expect(loadSkills(['nonexistent-skill'])).rejects.toThrow(
       /Skill file not found: nonexistent-skill/
     );
   });
 
-  it('throws for a skill with a missing SKILL.md file', () => {
-    expect(() => loadSkills(['__does_not_exist__'])).toThrow(
+  it('throws for a skill with a missing SKILL.md file', async () => {
+    await expect(loadSkills(['__does_not_exist__'])).rejects.toThrow(
       /Skill file not found/
     );
   });
@@ -52,71 +58,71 @@ describe('loadSkills', () => {
 // ---------------------------------------------------------------------------
 
 describe('isValidSkillName (path traversal guard via loadSkills)', () => {
-  it('rejects skill names containing directory traversal (..)', () => {
-    expect(() => loadSkills(['../etc/passwd'])).toThrow(
+  it('rejects skill names containing directory traversal (..)', async () => {
+    await expect(loadSkills(['../etc/passwd'])).rejects.toThrow(
       /Invalid skill name/
     );
   });
 
-  it('rejects skill names containing forward slashes', () => {
-    expect(() => loadSkills(['some/path'])).toThrow(
+  it('rejects skill names containing forward slashes', async () => {
+    await expect(loadSkills(['some/path'])).rejects.toThrow(
       /Invalid skill name/
     );
   });
 
-  it('rejects skill names containing backslashes', () => {
-    expect(() => loadSkills(['some\\path'])).toThrow(
+  it('rejects skill names containing backslashes', async () => {
+    await expect(loadSkills(['some\\path'])).rejects.toThrow(
       /Invalid skill name/
     );
   });
 
-  it('rejects skill names containing dots', () => {
-    expect(() => loadSkills(['skill.name'])).toThrow(
+  it('rejects skill names containing dots', async () => {
+    await expect(loadSkills(['skill.name'])).rejects.toThrow(
       /Invalid skill name/
     );
   });
 
-  it('rejects skill names with spaces', () => {
-    expect(() => loadSkills(['skill name'])).toThrow(
+  it('rejects skill names with spaces', async () => {
+    await expect(loadSkills(['skill name'])).rejects.toThrow(
       /Invalid skill name/
     );
   });
 
-  it('rejects empty string skill names', () => {
-    expect(() => loadSkills([''])).toThrow(
+  it('rejects empty string skill names', async () => {
+    await expect(loadSkills([''])).rejects.toThrow(
       /Invalid skill name/
     );
   });
 
-  it('rejects skill names with special characters', () => {
+  it('rejects skill names with special characters', async () => {
     const malicious = ['@evil', '$money', '!bang', 'semi;colon', 'back`tick'];
     for (const name of malicious) {
-      expect(() => loadSkills([name])).toThrow(/Invalid skill name/);
+      await expect(loadSkills([name])).rejects.toThrow(/Invalid skill name/);
     }
   });
 
-  it('accepts valid skill names with hyphens', () => {
+  it('accepts valid skill names with hyphens', async () => {
     // This will fail with "Skill file not found" not "Invalid skill name"
     // because the name is valid but the file doesn't exist
-    expect(() => loadSkills(['valid-skill-name'])).toThrow(
+    await expect(loadSkills(['valid-skill-name'])).rejects.toThrow(
       /Skill file not found/
     );
   });
 
-  it('accepts valid skill names with underscores', () => {
-    expect(() => loadSkills(['valid_skill_name'])).toThrow(
+  it('accepts valid skill names with underscores', async () => {
+    await expect(loadSkills(['valid_skill_name'])).rejects.toThrow(
       /Skill file not found/
     );
   });
 
-  it('accepts valid skill names with numbers', () => {
-    expect(() => loadSkills(['skill123'])).toThrow(
+  it('accepts valid skill names with numbers', async () => {
+    await expect(loadSkills(['skill123'])).rejects.toThrow(
       /Skill file not found/
     );
   });
 
-  it('provides a helpful error message for invalid names', () => {
-    expect(() => loadSkills(['../traversal'])).toThrow(
+  it('provides a helpful error message for invalid names', async () => {
+    await expect(loadSkills(['../traversal'])).rejects.toThrow(
       /Skill names may only contain letters, numbers, hyphens, and underscores/
     );
   });
@@ -208,62 +214,62 @@ describe('getSkillNamesForMode', () => {
 // ---------------------------------------------------------------------------
 
 describe('loadSkillsForMode', () => {
-  it('loads skills for strategy mode from real files', () => {
-    const { content, skillNames } = loadSkillsForMode('strategy');
+  it('loads skills for strategy mode from real files', async () => {
+    const { content, skillNames } = await loadSkillsForMode('strategy');
     expect(skillNames).toHaveLength(5);
     expect(content).toContain('## Skill: product-marketing-context');
     expect(content).toContain('## Skill: marketing-psychology');
   });
 
-  it('loads skills for create mode with artifact type', () => {
-    const { content, skillNames } = loadSkillsForMode('create', 'email_sequence');
+  it('loads skills for create mode with artifact type', async () => {
+    const { content, skillNames } = await loadSkillsForMode('create', 'email_sequence');
     expect(skillNames).toEqual(['email-sequence']);
     expect(content).toContain('## Skill: email-sequence');
   });
 
-  it('throws when create mode is used without artifact type', () => {
-    expect(() => loadSkillsForMode('create')).toThrow(
+  it('throws when create mode is used without artifact type', async () => {
+    await expect(loadSkillsForMode('create')).rejects.toThrow(
       /Artifact type is required for create mode/
     );
   });
 
-  it('loads skills for feedback mode', () => {
-    const { content, skillNames } = loadSkillsForMode('feedback');
+  it('loads skills for feedback mode', async () => {
+    const { content, skillNames } = await loadSkillsForMode('feedback');
     expect(skillNames).toEqual(['customer-research']);
     expect(content).toContain('## Skill: customer-research');
   });
 
-  it('loads skills for analyze mode', () => {
-    const { content, skillNames } = loadSkillsForMode('analyze');
+  it('loads skills for analyze mode', async () => {
+    const { content, skillNames } = await loadSkillsForMode('analyze');
     expect(skillNames).toHaveLength(2);
     expect(content).toContain('## Skill: analytics-tracking');
   });
 
-  it('loads skills for optimize mode', () => {
-    const { content, skillNames } = loadSkillsForMode('optimize');
+  it('loads skills for optimize mode', async () => {
+    const { content, skillNames } = await loadSkillsForMode('optimize');
     expect(skillNames).toHaveLength(5);
     expect(content).toContain('## Skill: page-cro');
   });
 
   // Verify every mode produces non-empty skill content
-  it('all non-create modes produce non-empty content', () => {
+  it('all non-create modes produce non-empty content', async () => {
     const modes: SessionMode[] = ['strategy', 'feedback', 'analyze', 'optimize'];
     for (const mode of modes) {
-      const { content } = loadSkillsForMode(mode);
+      const { content } = await loadSkillsForMode(mode);
       expect(content.length).toBeGreaterThan(0);
     }
   });
 
   // Verify all referenced skill directories actually exist
-  it('every skill referenced in MODE_SKILLS exists on disk', () => {
+  it('every skill referenced in MODE_SKILLS exists on disk', async () => {
     const modes: SessionMode[] = ['strategy', 'feedback', 'analyze', 'optimize'];
     for (const mode of modes) {
       // If a file is missing, loadSkillsForMode will throw
-      expect(() => loadSkillsForMode(mode)).not.toThrow();
+      await loadSkillsForMode(mode);
     }
   });
 
-  it('every skill referenced in ARTIFACT_TYPE_SKILLS exists on disk', () => {
+  it('every skill referenced in ARTIFACT_TYPE_SKILLS exists on disk', async () => {
     const artifactTypes: ArtifactType[] = [
       'copywriting',
       'email_sequence',
@@ -278,7 +284,7 @@ describe('loadSkillsForMode', () => {
       'ab_test',
     ];
     for (const at of artifactTypes) {
-      expect(() => loadSkillsForMode('create', at)).not.toThrow();
+      await loadSkillsForMode('create', at);
     }
   });
 });
