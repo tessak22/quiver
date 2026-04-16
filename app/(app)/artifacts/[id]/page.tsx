@@ -586,7 +586,7 @@ export default function ArtifactDetailPage() {
               </Button>
               <DeleteConfirmDialog
                 entityLabel="artifact"
-                warningExtra="The artifact and its version history will be removed."
+                warningExtra="Only this artifact is deleted. Prior/subsequent versions survive as standalone artifacts (their parent link is cleared)."
                 onConfirm={handleDelete}
                 trigger={
                   <Button

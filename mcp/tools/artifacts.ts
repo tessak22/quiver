@@ -170,13 +170,16 @@ export function registerArtifactTools(server: McpServer) {
           }));
         }
 
-        // 60s dedupe guard — if a matching artifact was just created, return it
+        // 60s dedupe guard — if a matching MCP artifact was just created, return it
         // instead of inserting a duplicate (handles Claude Desktop retries).
+        // Scoped to createdBy='mcp' so a UI-created artifact with the same
+        // (campaignId,title,type) doesn't suppress a legitimate MCP write.
         const recentDuplicate = await prisma.artifact.findFirst({
           where: {
             campaignId: resolvedCampaignId!,
             title,
             type,
+            createdBy: 'mcp',
             createdAt: { gte: new Date(Date.now() - 60_000) },
           },
           orderBy: { createdAt: 'desc' },

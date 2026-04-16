@@ -125,6 +125,7 @@ describe('save_artifact 60s dedupe guard', () => {
     expect(whereArg.campaignId).toBe('campaign-123');
     expect(whereArg.title).toBe(baseArgs.title);
     expect(whereArg.type).toBe(baseArgs.type);
+    expect(whereArg.createdBy).toBe('mcp');
     expect(whereArg.createdAt.gte).toBeInstanceOf(Date);
     // Window is ~60s back from now
     const windowMs = Date.now() - whereArg.createdAt.gte.getTime();
