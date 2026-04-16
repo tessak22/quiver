@@ -1,6 +1,6 @@
 /**
- * Tests for MCP tool registration — verifies all 24 tools are registered
- * with correct names and that the server builds without errors.
+ * Tests for MCP tool registration — verifies every tool in EXPECTED_TOOLS
+ * is registered with the correct name and that the server builds without errors.
  *
  * Does NOT test database interactions (those are thin wrappers around
  * lib/db functions which are tested via integration tests).

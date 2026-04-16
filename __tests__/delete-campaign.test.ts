@@ -5,8 +5,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/db', () => ({
-  prisma: {
+vi.mock('@/lib/db', () => {
+  const prismaMock = {
     campaign: {
       findUnique: vi.fn(),
       delete: vi.fn(),
@@ -16,8 +16,11 @@ vi.mock('@/lib/db', () => ({
     performanceLog: { count: vi.fn() },
     contentPiece: { count: vi.fn() },
     researchEntry: { count: vi.fn() },
-  },
-}));
+    // $transaction(fn) just runs fn with the same prisma mock as the tx client
+    $transaction: vi.fn((fn: (tx: typeof prismaMock) => unknown) => fn(prismaMock)),
+  };
+  return { prisma: prismaMock };
+});
 
 import { deleteCampaign, CampaignNotEmptyError } from '@/lib/db/campaigns';
 import { prisma } from '@/lib/db';

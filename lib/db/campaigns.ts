@@ -254,26 +254,32 @@ export async function deleteCampaign(id: string) {
     throw new Error(`Campaign not found: ${id}`);
   }
 
-  const [artifacts, sessions, performanceLogs, contentPieces, researchEntries] = await Promise.all([
-    prisma.artifact.count({ where: { campaignId: id } }),
-    prisma.session.count({ where: { campaignId: id } }),
-    prisma.performanceLog.count({ where: { campaignId: id } }),
-    prisma.contentPiece.count({ where: { campaignId: id } }),
-    prisma.researchEntry.count({ where: { campaignId: id } }),
-  ]);
+  // Wrap count+delete in a single transaction so a concurrent caller can't
+  // attach a child row between the count-read and the delete — which would
+  // either surface as a raw P2003 (required FKs) or silently orphan rows
+  // (optional FKs) if we used separate queries.
+  return prisma.$transaction(async (tx) => {
+    const [artifacts, sessions, performanceLogs, contentPieces, researchEntries] = await Promise.all([
+      tx.artifact.count({ where: { campaignId: id } }),
+      tx.session.count({ where: { campaignId: id } }),
+      tx.performanceLog.count({ where: { campaignId: id } }),
+      tx.contentPiece.count({ where: { campaignId: id } }),
+      tx.researchEntry.count({ where: { campaignId: id } }),
+    ]);
 
-  const counts: CampaignChildCounts = {
-    artifacts,
-    sessions,
-    performanceLogs,
-    contentPieces,
-    researchEntries,
-  };
-  if (artifacts + sessions + performanceLogs + contentPieces + researchEntries > 0) {
-    throw new CampaignNotEmptyError(counts);
-  }
+    const counts: CampaignChildCounts = {
+      artifacts,
+      sessions,
+      performanceLogs,
+      contentPieces,
+      researchEntries,
+    };
+    if (artifacts + sessions + performanceLogs + contentPieces + researchEntries > 0) {
+      throw new CampaignNotEmptyError(counts);
+    }
 
-  return prisma.campaign.delete({ where: { id } });
+    return tx.campaign.delete({ where: { id } });
+  });
 }
 
 // -------------------------------------------------------------------------
