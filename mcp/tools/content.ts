@@ -177,33 +177,43 @@ export function registerContentTools(server: McpServer) {
         const campaignId = await resolveCampaignId(args.campaign_id, args.campaign_name);
         const activeContext = await getActiveContext();
 
-        // 60s dedupe guard — if a matching content piece was just created,
+        // 60s dedupe guard — if a matching MCP content piece was just created,
         // return it instead of inserting a duplicate (handles Claude Desktop retries).
-        // Skip when the caller passes an explicit slug: that signals intent to
-        // create a distinct piece even if the title/type collide with a recent one.
-        if (!args.slug) {
-          const recentDuplicate = await prisma.contentPiece.findFirst({
-            where: {
+        //
+        // Identity key depends on whether the caller passed an explicit slug:
+        //   - Explicit slug → match on (slug). Slug is unique-constrained, so this
+        //     is the most specific key; a retry with the same slug returns the
+        //     existing row gracefully instead of surfacing as a P2002 collision.
+        //     Different explicit slug = different piece (intentional, not a dupe).
+        //   - No slug (slug auto-generated) → match on (title, contentType). A
+        //     retry regenerates the same slug so we'd hit P2002; dedupe spares
+        //     the insert attempt.
+        //
+        // Scoped to createdBy='mcp' so UI-created pieces don't suppress MCP writes.
+        const dedupeWhere = args.slug
+          ? { slug: args.slug, createdBy: 'mcp', createdAt: { gte: new Date(Date.now() - 60_000) } }
+          : {
               title: args.title,
               contentType: args.content_type,
               createdBy: 'mcp',
               createdAt: { gte: new Date(Date.now() - 60_000) },
-            },
-            orderBy: { createdAt: 'desc' },
-          });
-          if (recentDuplicate) {
-            return text(
-              JSON.stringify(
-                {
-                  ...recentDuplicate,
-                  _duplicate: true,
-                  public_api_url: `/api/public/content/${recentDuplicate.slug}`,
-                },
-                null,
-                2
-              )
-            );
-          }
+            };
+        const recentDuplicate = await prisma.contentPiece.findFirst({
+          where: dedupeWhere,
+          orderBy: { createdAt: 'desc' },
+        });
+        if (recentDuplicate) {
+          return text(
+            JSON.stringify(
+              {
+                ...recentDuplicate,
+                _duplicate: true,
+                public_api_url: `/api/public/content/${recentDuplicate.slug}`,
+              },
+              null,
+              2
+            )
+          );
         }
 
         const slug = args.slug || await generateSlug(args.title);
