@@ -80,15 +80,27 @@ export async function loadSkills(skillNames: string[]): Promise<string> {
   const sections: string[] = [];
   const now = Date.now();
 
+  // Validate all names up-front so a bad name short-circuits before any I/O.
   for (const name of skillNames) {
     if (!isValidSkillName(name)) {
       throw new Error(
         `Invalid skill name: "${name}". Skill names may only contain letters, numbers, hyphens, and underscores.`
       );
     }
+  }
+
+  // Resolve all DB lookups in one round-trip — this runs at session-start hot path.
+  // DB-installed skills bypass the filesystem cache because content can change at any
+  // time via admin install/update/toggle/delete actions.
+  const installedResults = await Promise.all(
+    skillNames.map((name) => getInstalledSkillByName(name))
+  );
+
+  for (let i = 0; i < skillNames.length; i++) {
+    const name = skillNames[i];
+    const installed = installedResults[i];
 
     // 1. DB-installed skill wins on name collision (issue #78 contract).
-    const installed = await getInstalledSkillByName(name);
     if (installed) {
       sections.push(`## Skill: ${name}\n\n${installed.skillContent}`);
       continue;
