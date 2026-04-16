@@ -36,20 +36,39 @@ beforeEach(() => {
 });
 
 describe('installed-skills CRUD', () => {
-  it('getInstalledSkills returns rows ordered by name', async () => {
+  it('getInstalledSkills returns summary projection ordered by name', async () => {
     mockSkill.findMany.mockResolvedValue([{ id: '1', name: 'a' }]);
     const result = await getInstalledSkills();
-    expect(mockSkill.findMany).toHaveBeenCalledWith({ orderBy: { name: 'asc' } });
+    expect(mockSkill.findMany).toHaveBeenCalledWith({
+      select: expect.objectContaining({
+        id: true,
+        name: true,
+        description: true,
+        githubRepo: true,
+        githubRef: true,
+        isEnabled: true,
+        installedAt: true,
+        lastFetchedAt: true,
+        fetchError: true,
+      }),
+      orderBy: { name: 'asc' },
+    });
+    // List endpoints must NOT return skillContent or references — they bloat
+    // every Settings/new-session page load.
+    const selectArg = mockSkill.findMany.mock.calls[0][0].select;
+    expect(selectArg.skillContent).toBeUndefined();
+    expect(selectArg.references).toBeUndefined();
     expect(result).toEqual([{ id: '1', name: 'a' }]);
   });
 
-  it('getEnabledInstalledSkills filters by isEnabled=true', async () => {
+  it('getEnabledInstalledSkills filters by isEnabled=true with summary projection', async () => {
     mockSkill.findMany.mockResolvedValue([]);
     await getEnabledInstalledSkills();
-    expect(mockSkill.findMany).toHaveBeenCalledWith({
-      where: { isEnabled: true },
-      orderBy: { name: 'asc' },
-    });
+    const call = mockSkill.findMany.mock.calls[0][0];
+    expect(call.where).toEqual({ isEnabled: true });
+    expect(call.orderBy).toEqual({ name: 'asc' });
+    expect(call.select.skillContent).toBeUndefined();
+    expect(call.select.references).toBeUndefined();
   });
 
   it('getInstalledSkillByRepo looks up by githubRepo', async () => {
