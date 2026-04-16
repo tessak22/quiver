@@ -36,7 +36,8 @@ vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => {
   return { McpServer: MockMcpServer };
 });
 
-// The expected complete list of 24 MCP tools from the issue spec
+// Expected complete list of MCP tools — kept in sync with the eight tool
+// module files in mcp/tools/. When you add or remove a tool, update here.
 const EXPECTED_TOOLS = [
   // Context tools (5)
   'get_context',
@@ -44,22 +45,25 @@ const EXPECTED_TOOLS = [
   'propose_context_update',
   'apply_context_update',
   'restore_context_version',
-  // Campaign tools (5)
+  // Campaign tools (6)
   'list_campaigns',
   'get_campaign',
   'create_campaign',
   'update_campaign',
   'update_campaign_status',
-  // Artifact tools (6)
+  'delete_campaign',
+  // Artifact tools (7)
   'list_artifacts',
   'get_artifact',
   'save_artifact',
   'update_artifact',
   'update_artifact_status',
   'archive_artifact',
-  // Session tools (2)
+  'delete_artifact',
+  // Session tools (3)
   'list_sessions',
   'get_session',
+  'delete_session',
   // Performance tools (5)
   'log_performance',
   'get_performance_log',
@@ -68,6 +72,27 @@ const EXPECTED_TOOLS = [
   'action_proposal',
   // Workspace tools (1)
   'get_dashboard_summary',
+  // Research tools (9)
+  'list_research_entries',
+  'get_research_entry',
+  'save_research_entry',
+  'list_quotes',
+  'get_linear_payload',
+  'update_research_entry',
+  'delete_research_entry',
+  'update_quote',
+  'delete_quote',
+  // Content tools (10)
+  'list_content',
+  'get_content',
+  'save_content',
+  'update_content',
+  'add_distribution',
+  'log_content_metrics',
+  'get_content_metrics',
+  'get_content_calendar',
+  'archive_content',
+  'delete_content',
 ] as const;
 
 describe('MCP tool registration', () => {
@@ -80,6 +105,8 @@ describe('MCP tool registration', () => {
     const { registerSessionTools } = await import('@/mcp/tools/sessions');
     const { registerPerformanceTools } = await import('@/mcp/tools/performance');
     const { registerWorkspaceTools } = await import('@/mcp/tools/workspace');
+    const { registerResearchTools } = await import('@/mcp/tools/research');
+    const { registerContentTools } = await import('@/mcp/tools/content');
 
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
     const server = new McpServer({ name: 'test', version: '0.0.0' });
@@ -90,10 +117,12 @@ describe('MCP tool registration', () => {
     registerSessionTools(server);
     registerPerformanceTools(server);
     registerWorkspaceTools(server);
+    registerResearchTools(server);
+    registerContentTools(server);
   });
 
-  it('registers exactly 24 tools', () => {
-    expect(registeredTools).toHaveLength(24);
+  it('registers the expected number of tools', () => {
+    expect(registeredTools).toHaveLength(EXPECTED_TOOLS.length);
   });
 
   it('registers all expected tools', () => {
