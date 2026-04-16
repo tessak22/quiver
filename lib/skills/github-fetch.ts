@@ -14,6 +14,8 @@
  *   - Missing SKILL.md → throws.
  *   - Empty SKILL.md → throws.
  *   - Missing frontmatter `name` or `description` → throws naming the field.
+ *   - Frontmatter `name` that fails the skill-name regex → throws (would
+ *     otherwise pass install but break loadSkills() during prompt assembly).
  *   - GitHub rate-limit (403 + X-RateLimit-Remaining: 0) → throws.
  *   - Missing references/ directory → returns empty references array.
  *
@@ -23,6 +25,10 @@
 import matter from 'gray-matter';
 
 const REPO_REGEX = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
+
+// Mirrors lib/ai/skills.ts isValidSkillName. Installed skill names must satisfy
+// this so they survive loadSkills() validation at session-prompt-assembly time.
+const SKILL_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 
 export interface FetchedSkill {
   name: string;
@@ -70,6 +76,11 @@ export async function fetchSkillFromGithub(
   }
   if (!fmDescription) {
     throw new Error(`SKILL.md is missing required field: description (in ${githubRepo}@${githubRef}).`);
+  }
+  if (!SKILL_NAME_REGEX.test(fmName)) {
+    throw new Error(
+      `SKILL.md frontmatter name "${fmName}" is invalid. Skill names may only contain letters, numbers, hyphens, and underscores (in ${githubRepo}@${githubRef}).`
+    );
   }
 
   const references = await fetchReferences(githubRepo, githubRef);

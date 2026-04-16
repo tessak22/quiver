@@ -152,4 +152,24 @@ describe('fetchSkillFromGithub', () => {
       /SKILL\.md is empty/i
     );
   });
+
+  it('throws when frontmatter name fails the skill-name regex', async () => {
+    installFetchMock(() => new Response(
+      '---\nname: invalid name with spaces\ndescription: ok\n---\n\nbody',
+      { status: 200 }
+    ));
+    await expect(fetchSkillFromGithub('owner/repo')).rejects.toThrow(
+      /frontmatter name "invalid name with spaces" is invalid/i
+    );
+  });
+
+  it('throws when frontmatter name contains slashes or punctuation', async () => {
+    installFetchMock(() => new Response(
+      '---\nname: bad/name\ndescription: ok\n---\n\nbody',
+      { status: 200 }
+    ));
+    await expect(fetchSkillFromGithub('owner/repo')).rejects.toThrow(
+      /letters, numbers, hyphens, and underscores/i
+    );
+  });
 });
