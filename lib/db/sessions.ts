@@ -109,3 +109,9 @@ export async function archiveSession(sessionId: string) {
     data: { isArchived: true },
   });
 }
+
+// Hard delete — Artifact.sessionId is nullable, so attached artifacts
+// survive with sessionId=null via Prisma's default SetNull behavior.
+export async function deleteSession(id: string) {
+  return prisma.session.delete({ where: { id } });
+}

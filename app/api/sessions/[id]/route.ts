@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth';
-import { getSession, updateSessionTitle, archiveSession } from '@/lib/db/sessions';
+import { getSession, updateSessionTitle, archiveSession, deleteSession } from '@/lib/db/sessions';
 import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 
 export async function GET(
@@ -68,6 +68,34 @@ export async function PATCH(
   } catch (err) {
     return NextResponse.json(
       { error: safeErrorMessage(err, 'Failed to update session') },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: { id: string } }
+) {
+  const auth = await requireRole('member');
+  if (!auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const existing = await getSession(params.id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+    if (existing.createdBy !== auth.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await deleteSession(params.id);
+    return new NextResponse(null, { status: 204 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to delete session') },
       { status: 500 }
     );
   }

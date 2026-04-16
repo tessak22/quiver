@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { getSession, getSessions } from '@/lib/db/sessions';
+import { prisma } from '@/lib/db';
+import { getSession, getSessions, deleteSession } from '@/lib/db/sessions';
 import { text, error } from '../lib/response.js';
 import type { SessionMode } from '@/types';
 
@@ -69,6 +70,36 @@ export function registerSessionTools(server: McpServer) {
         console.error('[quiver-mcp] get_session error:', err);
         return error(
           err instanceof Error ? err.message : 'Failed to fetch session'
+        );
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // delete_session
+  // -----------------------------------------------------------------------
+  server.tool(
+    'delete_session',
+    'Permanently delete a session. Attached artifacts survive with their sessionId cleared.',
+    {
+      session_id: z.string().describe('Session ID to delete'),
+    },
+    async ({ session_id }) => {
+      try {
+        const existing = await prisma.session.findUnique({
+          where: { id: session_id },
+          select: { id: true, title: true },
+        });
+        if (!existing) {
+          return error(`Session '${session_id}' not found.`);
+        }
+
+        await deleteSession(session_id);
+        return text(`Deleted session '${existing.title ?? session_id}'.`);
+      } catch (err) {
+        console.error('[quiver-mcp] delete_session error:', err);
+        return error(
+          err instanceof Error ? err.message : 'Failed to delete session'
         );
       }
     }
