@@ -86,6 +86,25 @@ describe('installed-skills CRUD', () => {
     expect(result).toEqual({ id: 'new-id' });
   });
 
+  it('createInstalledSkill round-trips a non-empty references array', async () => {
+    mockSkill.create.mockResolvedValue({ id: 'with-refs' });
+    const data = {
+      source: 'github' as const,
+      githubRepo: 'owner/repo-refs',
+      githubRef: 'main',
+      name: 'with-refs',
+      description: 'has references',
+      skillContent: '# body',
+      references: [
+        { path: 'references/style.md', content: '# style' },
+        { path: 'references/notes.md', content: '# notes' },
+      ],
+      installedBy: 'user-1',
+    };
+    await createInstalledSkill(data);
+    expect(mockSkill.create).toHaveBeenCalledWith({ data });
+  });
+
   it('updateInstalledSkill forwards id + patch', async () => {
     mockSkill.update.mockResolvedValue({ id: 'x' });
     await updateInstalledSkill('x', { fetchError: 'oops' });
