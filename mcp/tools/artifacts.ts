@@ -7,6 +7,7 @@ import {
   createArtifact,
   createArtifactVersion,
   transitionArtifactStatus,
+  deleteArtifact,
 } from '@/lib/db/artifacts';
 import { text, error } from '../lib/response.js';
 import { resolveCampaignId } from '../lib/resolvers.js';
@@ -310,7 +311,7 @@ export function registerArtifactTools(server: McpServer) {
           return error(`Artifact '${artifact_id}' not found.`);
         }
 
-        await prisma.artifact.delete({ where: { id: artifact_id } });
+        await deleteArtifact(artifact_id);
         return text(`Deleted artifact '${existing.title}' (${artifact_id}).`);
       } catch (err) {
         console.error('[quiver-mcp] delete_artifact error:', err);

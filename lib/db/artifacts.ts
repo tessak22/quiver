@@ -79,6 +79,14 @@ export async function createArtifact(data: {
   });
 }
 
+// Hard delete — PerformanceLog.artifactId and ContentPiece.artifactId are
+// optional FKs, so those rows survive with artifactId=null via Prisma's
+// default SetNull. Child artifacts (parentArtifactId → this) likewise null
+// out and become standalone rows.
+export async function deleteArtifact(id: string) {
+  return prisma.artifact.delete({ where: { id } });
+}
+
 export async function getArtifact(id: string) {
   return prisma.artifact.findUnique({
     where: { id },

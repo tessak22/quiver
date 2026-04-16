@@ -14,6 +14,7 @@ import {
   getContentPerformanceSignal,
   findContentPiecesByTitle,
   getContentPiecesForCalendar,
+  deleteContentPiece,
 } from '@/lib/db/content';
 import { getActiveContext } from '@/lib/db/context';
 import { text, error } from '../lib/response.js';
@@ -178,27 +179,31 @@ export function registerContentTools(server: McpServer) {
 
         // 60s dedupe guard — if a matching content piece was just created,
         // return it instead of inserting a duplicate (handles Claude Desktop retries).
-        const recentDuplicate = await prisma.contentPiece.findFirst({
-          where: {
-            title: args.title,
-            contentType: args.content_type,
-            createdBy: 'mcp',
-            createdAt: { gte: new Date(Date.now() - 60_000) },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-        if (recentDuplicate) {
-          return text(
-            JSON.stringify(
-              {
-                ...recentDuplicate,
-                _duplicate: true,
-                public_api_url: `/api/public/content/${recentDuplicate.slug}`,
-              },
-              null,
-              2
-            )
-          );
+        // Skip when the caller passes an explicit slug: that signals intent to
+        // create a distinct piece even if the title/type collide with a recent one.
+        if (!args.slug) {
+          const recentDuplicate = await prisma.contentPiece.findFirst({
+            where: {
+              title: args.title,
+              contentType: args.content_type,
+              createdBy: 'mcp',
+              createdAt: { gte: new Date(Date.now() - 60_000) },
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (recentDuplicate) {
+            return text(
+              JSON.stringify(
+                {
+                  ...recentDuplicate,
+                  _duplicate: true,
+                  public_api_url: `/api/public/content/${recentDuplicate.slug}`,
+                },
+                null,
+                2
+              )
+            );
+          }
         }
 
         const slug = args.slug || await generateSlug(args.title);
@@ -617,7 +622,7 @@ export function registerContentTools(server: McpServer) {
         if (!piece) {
           return error('Content piece not found.');
         }
-        await prisma.contentPiece.delete({ where: { id: piece.id } });
+        await deleteContentPiece(piece.id);
         return text(`Deleted content piece '${piece.title}' (slug: ${piece.slug ?? 'none'}).`);
       } catch (err) {
         console.error('[quiver-mcp] delete_content error:', err);
