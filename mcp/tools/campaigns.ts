@@ -1,11 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { prisma } from '@/lib/db';
 import { findCampaignMatchesByName } from '@/lib/db/campaigns';
 import {
   getCampaigns,
   getCampaign,
   createCampaign,
   updateCampaign,
+  deleteCampaign,
+  CampaignNotEmptyError,
 } from '@/lib/db/campaigns';
 import { text, error } from '../lib/response.js';
 import type { CampaignStatus, CampaignPriority } from '@/types';
@@ -223,6 +226,43 @@ export function registerCampaignTools(server: McpServer) {
         return error(
           err instanceof Error ? err.message : 'Failed to update campaign status'
         );
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // delete_campaign
+  // -----------------------------------------------------------------------
+  server.tool(
+    'delete_campaign',
+    "Permanently delete a campaign. Refuses if the campaign has attached artifacts, sessions, content, research, or performance logs — returns counts so you know what's blocking.",
+    {
+      campaign_id: z.string().describe('Campaign ID to delete'),
+    },
+    async ({ campaign_id }) => {
+      try {
+        const existing = await prisma.campaign.findUnique({
+          where: { id: campaign_id },
+          select: { id: true, name: true },
+        });
+        if (!existing) {
+          return error(`Campaign '${campaign_id}' not found.`);
+        }
+
+        await deleteCampaign(campaign_id);
+        return text(`Deleted campaign '${existing.name}' (${campaign_id}).`);
+      } catch (err) {
+        if (err instanceof CampaignNotEmptyError) {
+          return error(
+            JSON.stringify({
+              error: 'campaign_not_empty',
+              message: err.message,
+              counts: err.counts,
+            })
+          );
+        }
+        console.error('[quiver-mcp] delete_campaign error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to delete campaign');
       }
     }
   );
