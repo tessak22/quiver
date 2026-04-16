@@ -368,6 +368,7 @@ export default function SessionChatPage() {
   const initialMode = searchParams.get('mode') as SessionMode | null;
   const initialArtifactType = searchParams.get('artifactType') as ArtifactType | null;
   const initialCampaignId = searchParams.get('campaignId');
+  const initialExtraSkills = searchParams.get('extraSkills');
   const initialMessage = searchParams.get('initialMessage') ?? '';
 
   // State
@@ -508,6 +509,12 @@ export default function SessionChatPage() {
       }
       if (initialCampaignId) {
         payload.campaignId = initialCampaignId;
+      }
+      if (isNewSession && initialExtraSkills) {
+        payload.extraSkills = initialExtraSkills
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
 
       const res = await fetch('/api/sessions/stream', {
