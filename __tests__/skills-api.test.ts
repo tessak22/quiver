@@ -172,6 +172,15 @@ describe('PATCH /api/skills/[id]', () => {
     mockedRequireRole.mockResolvedValue({ id: 'admin-1', email: 'a@b.c', role: 'admin' });
   });
 
+  it('returns 401 when not admin', async () => {
+    mockedRequireRole.mockResolvedValue(null);
+    const res = await updatePATCH(
+      new Request('http://localhost/api/skills/abc', { method: 'PATCH' }),
+      { params: { id: 'abc' } }
+    );
+    expect(res.status).toBe(401);
+  });
+
   it('returns 404 when skill not found', async () => {
     mockedPrismaSkill.findUnique.mockResolvedValue(null);
     const res = await updatePATCH(
@@ -231,11 +240,36 @@ describe('PATCH /api/skills/[id]', () => {
       expect.objectContaining({ fetchError: 'Repository not found.' })
     );
   });
+
+  it('returns 422 when skill has no githubRepo', async () => {
+    mockedPrismaSkill.findUnique.mockResolvedValue({
+      id: 'abc',
+      githubRepo: null,
+      githubRef: null,
+    });
+    const res = await updatePATCH(
+      new Request('http://localhost/api/skills/abc', { method: 'PATCH' }),
+      { params: { id: 'abc' } }
+    );
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatch(/cannot be refreshed/i);
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/skills/[id]', () => {
   beforeEach(() => {
     mockedRequireRole.mockResolvedValue({ id: 'admin-1', email: 'a@b.c', role: 'admin' });
+  });
+
+  it('returns 401 when not admin', async () => {
+    mockedRequireRole.mockResolvedValue(null);
+    const res = await deleteDELETE(
+      new Request('http://localhost/api/skills/abc', { method: 'DELETE' }),
+      { params: { id: 'abc' } }
+    );
+    expect(res.status).toBe(401);
   });
 
   it('hard-deletes and returns 204', async () => {
@@ -262,6 +296,15 @@ describe('DELETE /api/skills/[id]', () => {
 describe('POST /api/skills/[id]/toggle', () => {
   beforeEach(() => {
     mockedRequireRole.mockResolvedValue({ id: 'admin-1', email: 'a@b.c', role: 'admin' });
+  });
+
+  it('returns 401 when not admin', async () => {
+    mockedRequireRole.mockResolvedValue(null);
+    const res = await togglePOST(
+      new Request('http://localhost/api/skills/abc/toggle', { method: 'POST' }),
+      { params: { id: 'abc' } }
+    );
+    expect(res.status).toBe(401);
   });
 
   it('flips isEnabled', async () => {

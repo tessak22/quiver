@@ -50,7 +50,11 @@ export async function PATCH(_request: Request, { params }: RouteContext) {
     return NextResponse.json({ skill: updated });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to refresh skill from GitHub.';
-    await updateInstalledSkill(existing.id, { fetchError: message });
+    try {
+      await updateInstalledSkill(existing.id, { fetchError: message });
+    } catch {
+      // Row may have been deleted concurrently — surface the original fetch error to the caller.
+    }
     return NextResponse.json({ error: message }, { status: 422 });
   }
 }
@@ -63,5 +67,6 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   if (!existing) return NextResponse.json({ error: 'Skill not found' }, { status: 404 });
 
   await deleteInstalledSkill(existing.id);
+  // 204 with empty body is the conventional response for a successful DELETE.
   return new Response(null, { status: 204 });
 }
