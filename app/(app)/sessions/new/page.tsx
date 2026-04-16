@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -423,20 +424,20 @@ export default function NewSessionPage() {
                   const checked = selectedExtraSkills.includes(skill.name);
                   return (
                     <li key={skill.id} className="flex items-start gap-2">
-                      <input
+                      <Checkbox
                         id={`extra-skill-${skill.id}`}
-                        type="checkbox"
                         className="mt-1"
                         checked={checked}
-                        onChange={(e) => {
+                        onCheckedChange={(state) => {
+                          const isChecked = state === true;
                           setSelectedExtraSkills((prev) =>
-                            e.target.checked
+                            isChecked
                               ? [...prev, skill.name]
                               : prev.filter((n) => n !== skill.name)
                           );
                         }}
                       />
-                      <label htmlFor={`extra-skill-${skill.id}`} className="space-y-0.5">
+                      <label htmlFor={`extra-skill-${skill.id}`} className="space-y-0.5 cursor-pointer">
                         <span className="text-sm font-medium">{skill.name}</span>
                         <span className="block text-xs text-muted-foreground">
                           {skill.description}

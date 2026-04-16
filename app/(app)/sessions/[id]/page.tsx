@@ -393,6 +393,7 @@ export default function SessionChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const extraSkillsSentRef = useRef(false);
   const autoSentRef = useRef(false);
 
   // Scroll to bottom when messages change
@@ -510,7 +511,8 @@ export default function SessionChatPage() {
       if (initialCampaignId) {
         payload.campaignId = initialCampaignId;
       }
-      if (isNewSession && initialExtraSkills) {
+      if (isNewSession && initialExtraSkills && !extraSkillsSentRef.current) {
+        extraSkillsSentRef.current = true;
         payload.extraSkills = initialExtraSkills
           .split(',')
           .map((s) => s.trim())
