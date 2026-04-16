@@ -38,7 +38,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
     await Promise.all([
       loadWithFallback('campaigns', () => getCampaigns({ status: 'active' }), [], loadIssues),
       loadWithFallback('sessions', () => getSessions(), [], loadIssues),
-      loadWithFallback('artifacts', () => getArtifacts(), [], loadIssues),
+      loadWithFallback('artifacts', () => getArtifacts({ status: 'active' }), [], loadIssues),
       loadWithFallback('reminders', () => getReminders(), [], loadIssues),
       loadWithFallback('context', () => getActiveContext(), null, loadIssues),
       loadWithFallback('pending proposals', () => getPendingProposals(), [], loadIssues),
