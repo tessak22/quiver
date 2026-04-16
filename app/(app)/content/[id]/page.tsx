@@ -3,7 +3,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { marked } from 'marked';
 import DOMPurify from 'isomorphic-dompurify';
@@ -27,6 +27,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { Sparkline } from '@/components/content/sparkline';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import type {
   ContentType,
   ContentStatus,
@@ -238,6 +239,7 @@ function safeParseErrorBody(rawBody: string): { error?: string } | null {
 
 export default function ContentDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const contentId = params.id as string;
 
   const [piece, setPiece] = useState<ContentDetail | null>(null);
@@ -591,6 +593,25 @@ export default function ContentDetailPage() {
         error: err,
       });
       setError(err instanceof Error ? err.message : 'Failed to delete distribution');
+    }
+  }
+
+  // Hard-delete the whole content piece (distinct from distribution delete
+  // above). Distributions and metric snapshots cascade-delete server-side.
+  async function handleDeleteContent() {
+    try {
+      const res = await fetch(`/api/content/${contentId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data: { error?: string } = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Failed to delete content piece');
+      }
+      router.push('/content');
+    } catch (err) {
+      console.error('[content/detail] Failed to delete content piece', {
+        contentId,
+        error: err,
+      });
+      setError(err instanceof Error ? err.message : 'Failed to delete content piece');
     }
   }
 
@@ -1360,6 +1381,27 @@ export default function ContentDetailPage() {
                   {apiUrlCopied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Danger zone — hard delete */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                Danger Zone
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DeleteConfirmDialog
+                entityLabel="content piece"
+                warningExtra="Distributions and metric snapshots will also be deleted."
+                onConfirm={handleDeleteContent}
+                trigger={
+                  <Button variant="destructive" size="sm" className="w-full justify-start">
+                    Delete content piece
+                  </Button>
+                }
+              />
             </CardContent>
           </Card>
         </div>

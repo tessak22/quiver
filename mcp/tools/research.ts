@@ -176,6 +176,21 @@ export function registerResearchTools(server: McpServer) {
           args.campaign_name
         );
 
+        // 60s dedupe guard — if a matching research entry was just created,
+        // return it instead of inserting a duplicate (handles Claude Desktop retries).
+        const recentDuplicate = await prisma.researchEntry.findFirst({
+          where: {
+            title: args.title,
+            sourceType: args.source_type,
+            createdBy: 'mcp',
+            createdAt: { gte: new Date(Date.now() - 60_000) },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (recentDuplicate) {
+          return text(JSON.stringify({ ...recentDuplicate, _duplicate: true }, null, 2));
+        }
+
         const entry = await createResearchEntry({
           title: args.title,
           sourceType: args.source_type,

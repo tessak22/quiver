@@ -120,12 +120,16 @@ export async function getContentPieces(filters?: {
   status?: string;
   contentType?: string;
   campaignId?: string;
+  excludeArchived?: boolean;
 }) {
   return prisma.contentPiece.findMany({
     where: {
       status: filters?.status,
       contentType: filters?.contentType,
       campaignId: filters?.campaignId,
+      ...(filters?.excludeArchived && !filters?.status
+        ? { NOT: { status: 'archived' } }
+        : {}),
     },
     include: {
       campaign: { select: { id: true, name: true } },
@@ -507,4 +511,10 @@ export function getContentPerformanceSignal(
   if (latest >= avg) return 'strong';
   if (latest < avg * 0.5) return 'weak';
   return 'logging';
+}
+
+// Hard delete — distributions + metricSnapshots cascade via schema;
+// derived content (parentContentId → this) nulls out via Prisma default SetNull.
+export async function deleteContentPiece(id: string) {
+  return prisma.contentPiece.delete({ where: { id } });
 }

@@ -14,6 +14,7 @@ import {
   getContentPerformanceSignal,
   findContentPiecesByTitle,
   getContentPiecesForCalendar,
+  deleteContentPiece,
 } from '@/lib/db/content';
 import { getActiveContext } from '@/lib/db/context';
 import { text, error } from '../lib/response.js';
@@ -175,6 +176,45 @@ export function registerContentTools(server: McpServer) {
 
         const campaignId = await resolveCampaignId(args.campaign_id, args.campaign_name);
         const activeContext = await getActiveContext();
+
+        // 60s dedupe guard — if a matching MCP content piece was just created,
+        // return it instead of inserting a duplicate (handles Claude Desktop retries).
+        //
+        // Identity key depends on whether the caller passed an explicit slug:
+        //   - Explicit slug → match on (slug). Slug is unique-constrained, so this
+        //     is the most specific key; a retry with the same slug returns the
+        //     existing row gracefully instead of surfacing as a P2002 collision.
+        //     Different explicit slug = different piece (intentional, not a dupe).
+        //   - No slug (slug auto-generated) → match on (title, contentType). A
+        //     retry regenerates the same slug so we'd hit P2002; dedupe spares
+        //     the insert attempt.
+        //
+        // Scoped to createdBy='mcp' so UI-created pieces don't suppress MCP writes.
+        const dedupeWhere = args.slug
+          ? { slug: args.slug, createdBy: 'mcp', createdAt: { gte: new Date(Date.now() - 60_000) } }
+          : {
+              title: args.title,
+              contentType: args.content_type,
+              createdBy: 'mcp',
+              createdAt: { gte: new Date(Date.now() - 60_000) },
+            };
+        const recentDuplicate = await prisma.contentPiece.findFirst({
+          where: dedupeWhere,
+          orderBy: { createdAt: 'desc' },
+        });
+        if (recentDuplicate) {
+          return text(
+            JSON.stringify(
+              {
+                ...recentDuplicate,
+                _duplicate: true,
+                public_api_url: `/api/public/content/${recentDuplicate.slug}`,
+              },
+              null,
+              2
+            )
+          );
+        }
 
         const slug = args.slug || await generateSlug(args.title);
 
@@ -571,6 +611,32 @@ export function registerContentTools(server: McpServer) {
       } catch (err) {
         console.error('[quiver-mcp] archive_content error:', err);
         return error(err instanceof Error ? err.message : 'Failed to archive content');
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // delete_content
+  // -----------------------------------------------------------------------
+  server.tool(
+    'delete_content',
+    'Hard delete a content piece. Accepts content ID, slug, or title partial match. Distributions and metric snapshots cascade; derived content (parentContentId children) nulls out.',
+    {
+      content_id: z.string().optional().describe('Content piece ID'),
+      slug: z.string().optional().describe('Content piece slug'),
+      title: z.string().optional().describe('Content piece title (case-insensitive partial match)'),
+    },
+    async (args) => {
+      try {
+        const piece = await resolveContentPiece(args.content_id, args.slug, args.title);
+        if (!piece) {
+          return error('Content piece not found.');
+        }
+        await deleteContentPiece(piece.id);
+        return text(`Deleted content piece '${piece.title}' (slug: ${piece.slug ?? 'none'}).`);
+      } catch (err) {
+        console.error('[quiver-mcp] delete_content error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to delete content');
       }
     }
   );

@@ -60,13 +60,21 @@ export async function getSession(id: string) {
 export async function getSessions(filters?: {
   mode?: SessionMode;
   campaignId?: string;
-  isArchived?: boolean;
+  /**
+   * Three-state archived filter:
+   *  - `false` / `undefined` (default): only non-archived sessions
+   *  - `true`: only archived sessions (historical `archived=true` UX)
+   *  - `null`: include both archived and non-archived (new `includeArchived=true` UX)
+   */
+  isArchived?: boolean | null;
 }) {
+  const archivedWhere =
+    filters?.isArchived === null ? undefined : (filters?.isArchived ?? false);
   return prisma.session.findMany({
     where: {
       mode: filters?.mode,
       campaignId: filters?.campaignId,
-      isArchived: filters?.isArchived ?? false,
+      ...(archivedWhere === undefined ? {} : { isArchived: archivedWhere }),
     },
     orderBy: { updatedAt: 'desc' },
     include: {
@@ -108,4 +116,10 @@ export async function archiveSession(sessionId: string) {
     where: { id: sessionId },
     data: { isArchived: true },
   });
+}
+
+// Hard delete — Artifact.sessionId is nullable, so attached artifacts
+// survive with sessionId=null via Prisma's default SetNull behavior.
+export async function deleteSession(id: string) {
+  return prisma.session.delete({ where: { id } });
 }

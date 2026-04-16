@@ -4,7 +4,8 @@ import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
 import {
   getCampaign,
   updateCampaign,
-  archiveCampaign,
+  deleteCampaign,
+  CampaignNotEmptyError,
   getCampaignSessions,
   getCampaignArtifacts,
   getCampaignPerformanceLogs,
@@ -182,11 +183,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
     }
 
-    const campaign = await archiveCampaign(params.id);
-    return NextResponse.json({ campaign });
+    await deleteCampaign(params.id);
+    return new NextResponse(null, { status: 204 });
   } catch (err) {
+    if (err instanceof CampaignNotEmptyError) {
+      return NextResponse.json(
+        { error: err.message, counts: err.counts },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
-      { error: safeErrorMessage(err, 'Failed to archive campaign') },
+      { error: safeErrorMessage(err, 'Failed to delete campaign') },
       { status: 500 }
     );
   }

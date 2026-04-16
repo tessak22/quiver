@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth';
-import { getArtifact, updateArtifact } from '@/lib/db/artifacts';
+import { getArtifact, updateArtifact, deleteArtifact } from '@/lib/db/artifacts';
 import { prisma } from '@/lib/db';
 import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 import { ARTIFACT_TYPES } from '@/types';
@@ -144,11 +144,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Artifact not found' }, { status: 404 });
     }
 
-    // FK relations to PerformanceLog and ContentPiece use the Prisma default (SetNull),
-    // so those rows remain in the DB with artifactId nulled out — intentionally accepted.
-    // Child artifacts (versions) also have parentArtifactId nulled — their history is severed
-    // but they remain queryable as standalone artifacts.
-    await prisma.artifact.delete({ where: { id: params.id } });
+    await deleteArtifact(params.id);
     return NextResponse.json({ deleted: true });
   } catch (err) {
     return NextResponse.json(

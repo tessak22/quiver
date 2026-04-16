@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import type { SessionMode, ArtifactType, ChatMessage, ArtifactReadyMarker } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -745,6 +746,22 @@ export default function SessionChatPage() {
     }
   }
 
+  // Hard-delete session. Attached artifacts survive with their session link
+  // removed (cleared server-side); see DELETE /api/sessions/[id].
+  async function handleDelete() {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data: { error?: string } = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Failed to delete session');
+      }
+      router.push('/sessions');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete session');
+    }
+  }
+
   // --- Loading state ---
   if (loading) {
     return (
@@ -833,18 +850,28 @@ export default function SessionChatPage() {
           )}
         </div>
 
-        {/* Share button */}
-        {sessionId && !isNewSession && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleShare}
-            disabled={shareLoading}
-            className="shrink-0"
-          >
-            {shareLoading ? 'Generating...' : 'Share'}
-          </Button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Share button */}
+          {sessionId && !isNewSession && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleShare}
+              disabled={shareLoading}
+            >
+              {shareLoading ? 'Generating...' : 'Share'}
+            </Button>
+          )}
+
+          {/* Delete session */}
+          {sessionId && !isNewSession && (
+            <DeleteConfirmDialog
+              entityLabel="session"
+              warningExtra="Attached artifacts will survive — their session link will be removed."
+              onConfirm={handleDelete}
+            />
+          )}
+        </div>
       </div>
 
       {/* Share URL banner */}

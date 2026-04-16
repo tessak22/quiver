@@ -7,6 +7,7 @@ import {
   createArtifact,
   createArtifactVersion,
   transitionArtifactStatus,
+  deleteArtifact,
 } from '@/lib/db/artifacts';
 import { text, error } from '../lib/response.js';
 import { resolveCampaignId } from '../lib/resolvers.js';
@@ -169,6 +170,24 @@ export function registerArtifactTools(server: McpServer) {
           }));
         }
 
+        // 60s dedupe guard — if a matching MCP artifact was just created, return it
+        // instead of inserting a duplicate (handles Claude Desktop retries).
+        // Scoped to createdBy='mcp' so a UI-created artifact with the same
+        // (campaignId,title,type) doesn't suppress a legitimate MCP write.
+        const recentDuplicate = await prisma.artifact.findFirst({
+          where: {
+            campaignId: resolvedCampaignId!,
+            title,
+            type,
+            createdBy: 'mcp',
+            createdAt: { gte: new Date(Date.now() - 60_000) },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (recentDuplicate) {
+          return text(JSON.stringify({ ...recentDuplicate, _duplicate: true }, null, 2));
+        }
+
         const artifact = await createArtifact({
           title,
           type,
@@ -272,6 +291,34 @@ export function registerArtifactTools(server: McpServer) {
         return error(
           err instanceof Error ? err.message : 'Failed to archive artifact'
         );
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // delete_artifact
+  // -----------------------------------------------------------------------
+  server.tool(
+    'delete_artifact',
+    'Permanently delete an artifact. Child versions and linked performance logs/content pieces are detached (FK nulled). This cannot be undone.',
+    {
+      artifact_id: z.string().describe('Artifact ID to delete'),
+    },
+    async ({ artifact_id }) => {
+      try {
+        const existing = await prisma.artifact.findUnique({
+          where: { id: artifact_id },
+          select: { id: true, title: true },
+        });
+        if (!existing) {
+          return error(`Artifact '${artifact_id}' not found.`);
+        }
+
+        await deleteArtifact(artifact_id);
+        return text(`Deleted artifact '${existing.title}' (${artifact_id}).`);
+      } catch (err) {
+        console.error('[quiver-mcp] delete_artifact error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to delete artifact');
       }
     }
   );

@@ -72,6 +72,8 @@ export async function GET(request: Request) {
   const campaignId = url.searchParams.get('campaignId');
   const status = url.searchParams.get('status');
   const search = url.searchParams.get('search');
+  const includeArchived = url.searchParams.get('includeArchived') === 'true';
+  const excludeArchived = !includeArchived && !status;
 
   try {
     const artifacts = await getArtifacts({
@@ -79,6 +81,7 @@ export async function GET(request: Request) {
       campaignId: campaignId ?? undefined,
       status: status ?? undefined,
       search: search ?? undefined,
+      excludeArchived,
     });
 
     return NextResponse.json({ artifacts });

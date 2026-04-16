@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -260,6 +261,7 @@ export default function CampaignsPage() {
   // View and filter state
   const [viewMode, setViewMode] = useState<ViewMode>('board');
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | 'all'>('all');
+  const [showArchived, setShowArchived] = useState(false);
 
   // Create dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -298,6 +300,8 @@ export default function CampaignsPage() {
     try {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.set('status', statusFilter);
+      // API defaults to excluding archived campaigns; opt-in via switch.
+      if (showArchived) params.set('includeArchived', 'true');
 
       const res = await fetch(`/api/campaigns?${params.toString()}`);
       if (!res.ok) {
@@ -312,7 +316,7 @@ export default function CampaignsPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, showArchived]);
 
   useEffect(() => {
     fetchCampaigns();
@@ -595,6 +599,21 @@ export default function CampaignsPage() {
               <SelectItem value="archived">Archived</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        {/* Include archived toggle */}
+        <div className="flex items-center gap-2">
+          <Switch
+            id="show-archived"
+            checked={showArchived}
+            onCheckedChange={setShowArchived}
+          />
+          <label
+            htmlFor="show-archived"
+            className="text-sm text-muted-foreground cursor-pointer"
+          >
+            Include archived
+          </label>
         </div>
 
         <div className="flex items-center rounded-md border">

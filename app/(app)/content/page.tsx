@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
   Tabs,
   TabsContent,
@@ -157,6 +158,7 @@ export default function ContentLibraryPage() {
   const [typeFilter, setTypeFilter] = useState<ContentType | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<ContentStatus | 'all'>('all');
   const [campaignFilter, setCampaignFilter] = useState<string>('all');
+  const [showArchived, setShowArchived] = useState(false);
 
   // Calendar state
   const now = new Date();
@@ -189,6 +191,8 @@ export default function ContentLibraryPage() {
       if (typeFilter !== 'all') params.set('contentType', typeFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (campaignFilter !== 'all') params.set('campaignId', campaignFilter);
+      // API defaults to excluding archived content; opt-in via switch.
+      if (showArchived) params.set('includeArchived', 'true');
 
       const res = await fetch(`/api/content?${params.toString()}`);
       if (!res.ok) {
@@ -203,7 +207,7 @@ export default function ContentLibraryPage() {
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, statusFilter, campaignFilter]);
+  }, [typeFilter, statusFilter, campaignFilter, showArchived]);
 
   useEffect(() => {
     fetchContent();
@@ -341,6 +345,21 @@ export default function ContentLibraryPage() {
                 </SelectContent>
               </Select>
             )}
+
+            {/* Include archived toggle */}
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-archived"
+                checked={showArchived}
+                onCheckedChange={setShowArchived}
+              />
+              <label
+                htmlFor="show-archived"
+                className="text-sm text-muted-foreground cursor-pointer"
+              >
+                Include archived
+              </label>
+            </div>
           </div>
 
           {/* Loading */}

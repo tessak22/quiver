@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireRole } from '@/lib/auth';
 import { parseJsonBody, parseISODate, safeErrorMessage } from '@/lib/utils';
-import { getContentPiece, updateContentPiece, getContentPerformanceSignal } from '@/lib/db/content';
+import { getContentPiece, updateContentPiece, deleteContentPiece, getContentPerformanceSignal } from '@/lib/db/content';
 import {
   CONTENT_STATUS_VALUES,
   CONTENT_TYPE_VALUES,
@@ -159,13 +159,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Content piece not found' }, { status: 404 });
     }
 
-    // Soft delete — set status to archived
-    const piece = await updateContentPiece(params.id, { status: 'archived' });
-
-    return NextResponse.json({
-      contentPiece: piece,
-      performanceSignal: getContentPerformanceSignal(piece.metricSnapshots),
-    });
+    await deleteContentPiece(params.id);
+    return new NextResponse(null, { status: 204 });
   } catch (err) {
     return NextResponse.json(
       { error: safeErrorMessage(err, 'Failed to delete content piece') },

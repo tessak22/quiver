@@ -28,6 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import type {
   CampaignStatus,
   CampaignPriority,
@@ -781,13 +782,41 @@ export default function CampaignDetailClientPage({
     }
   }
 
-  // Archive handler
+  // Hard-delete handler — calls DELETE /api/campaigns/:id.
+  // Surfaces 409 blocker messages (with attached-record counts) as a user-facing
+  // error rather than a generic failure so the user knows what to clean up.
+  async function handleDelete() {
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}`, { method: 'DELETE' });
+      if (res.status === 409) {
+        const body: { error?: string; counts?: Record<string, number> } = await res
+          .json()
+          .catch(() => ({}));
+        setError(
+          body.error ?? 'Campaign has attached records. Move or delete them first.'
+        );
+        return;
+      }
+      if (!res.ok) {
+        const body: { error?: string } = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? 'Failed to delete campaign');
+      }
+      router.push('/campaigns');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete campaign');
+    }
+  }
+
+  // Archive handler — PATCH with status: 'archived' (reversible via status change).
+  // DELETE is now a true hard delete — handled separately.
   async function handleArchive() {
-    if (!confirm('Are you sure you want to archive this campaign? This cannot be undone.')) return;
+    if (!confirm('Archive this campaign? It will be hidden from default views but can be restored.')) return;
 
     try {
       const res = await fetch(`/api/campaigns/${campaignId}`, {
-        method: 'DELETE',
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'archived' }),
       });
 
       if (!res.ok) {
@@ -911,6 +940,12 @@ export default function CampaignDetailClientPage({
               Archive
             </Button>
           )}
+
+          <DeleteConfirmDialog
+            entityLabel="campaign"
+            warningExtra="The campaign must have no attached artifacts, sessions, content, research, or performance logs. Otherwise the delete will be refused."
+            onConfirm={handleDelete}
+          />
         </div>
       </div>
 
