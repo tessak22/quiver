@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import type { SessionMode } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -83,7 +84,9 @@ export default function SessionsListPage() {
     try {
       const params = new URLSearchParams();
       if (modeFilter !== 'all') params.set('mode', modeFilter);
-      if (showArchived) params.set('archived', 'true');
+      // `includeArchived=true` returns both archived and non-archived sessions;
+      // default (no param) returns only non-archived. See app/api/sessions/route.ts.
+      if (showArchived) params.set('includeArchived', 'true');
 
       const res = await fetch(`/api/sessions?${params.toString()}`);
       if (!res.ok) {
@@ -143,13 +146,19 @@ export default function SessionsListPage() {
           </Select>
         </div>
 
-        <Button
-          variant={showArchived ? 'secondary' : 'outline'}
-          size="sm"
-          onClick={() => setShowArchived((prev) => !prev)}
-        >
-          {showArchived ? 'Showing archived' : 'Show archived'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Switch
+            id="show-archived"
+            checked={showArchived}
+            onCheckedChange={setShowArchived}
+          />
+          <label
+            htmlFor="show-archived"
+            className="text-sm text-muted-foreground cursor-pointer"
+          >
+            Include archived
+          </label>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -179,15 +188,11 @@ export default function SessionsListPage() {
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-lg font-medium">No sessions yet</p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              {showArchived
-                ? 'No archived sessions found.'
-                : 'Start a new AI marketing session to get strategic recommendations, create content, analyze data, or optimize your copy.'}
+              Start a new AI marketing session to get strategic recommendations, create content, analyze data, or optimize your copy.
             </p>
-            {!showArchived && (
-              <Button asChild className="mt-4">
-                <Link href="/sessions/new">Start your first session</Link>
-              </Button>
-            )}
+            <Button asChild className="mt-4">
+              <Link href="/sessions/new">Start your first session</Link>
+            </Button>
           </CardContent>
         </Card>
       )}

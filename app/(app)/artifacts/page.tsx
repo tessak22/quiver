@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import type { ArtifactType, ArtifactStatus, PerformanceSignal } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BulkActionBar } from '@/components/artifacts/bulk-action-bar';
@@ -157,6 +158,7 @@ export default function ArtifactsLibraryPage() {
   const [typeFilter, setTypeFilter] = useState<ArtifactType | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<ArtifactStatus | 'all'>('all');
   const [campaignFilter, setCampaignFilter] = useState<string>('all');
+  const [showArchived, setShowArchived] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -219,6 +221,10 @@ export default function ArtifactsLibraryPage() {
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (campaignFilter !== 'all') params.set('campaignId', campaignFilter);
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+      // When `status=archived` is explicitly selected, the API already scopes
+      // to archived rows; `includeArchived` is redundant there but safe — the
+      // route handles coexistence. See app/api/artifacts/route.ts.
+      if (showArchived) params.set('includeArchived', 'true');
 
       const res = await fetch(`/api/artifacts?${params.toString()}`);
       if (!res.ok) {
@@ -233,7 +239,7 @@ export default function ArtifactsLibraryPage() {
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, statusFilter, campaignFilter, debouncedSearch]);
+  }, [typeFilter, statusFilter, campaignFilter, debouncedSearch, showArchived]);
 
   useEffect(() => {
     fetchArtifacts();
@@ -479,6 +485,21 @@ export default function ArtifactsLibraryPage() {
             </SelectContent>
           </Select>
         )}
+
+        {/* Include archived toggle */}
+        <div className="flex items-center gap-2">
+          <Switch
+            id="show-archived"
+            checked={showArchived}
+            onCheckedChange={setShowArchived}
+          />
+          <label
+            htmlFor="show-archived"
+            className="text-sm text-muted-foreground cursor-pointer"
+          >
+            Include archived
+          </label>
+        </div>
       </div>
 
       {/* Error banner */}
