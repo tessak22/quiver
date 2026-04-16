@@ -72,7 +72,9 @@ const DEFAULT_CREATE_SKILLS = ['copywriting'];
  */
 // Validate skill name to prevent path traversal attacks.
 // Only allows alphanumeric characters, hyphens, and underscores.
-function isValidSkillName(name: string): boolean {
+// Exported so API boundary callers (e.g. stream route validating extraSkills)
+// can reject invalid names with a 4xx instead of a 500 from loadSkills().
+export function isValidSkillName(name: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(name);
 }
 
