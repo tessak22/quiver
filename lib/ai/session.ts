@@ -21,7 +21,7 @@
  */
 
 import { prisma } from '@/lib/db';
-import { loadSkillsForMode } from '@/lib/ai/skills';
+import { loadSkills, loadSkillsForMode } from '@/lib/ai/skills';
 import type { SessionMode, ArtifactType } from '@/types';
 
 interface AssemblePromptOptions {
@@ -29,6 +29,7 @@ interface AssemblePromptOptions {
   artifactType?: ArtifactType;
   campaignId?: string;
   contextVersionId?: string;
+  extraInstalledSkillNames?: string[];
 }
 
 interface AssembledPrompt {
@@ -188,11 +189,24 @@ export async function assembleSystemPrompt(
   // Extract product name from positioning or ICP
   const productName = extractProductName(context);
 
-  // Load skills
-  const { content: skillContent, skillNames } = loadSkillsForMode(
-    options.mode,
-    options.artifactType
-  );
+  // Load skills (mode-default + optional extras)
+  const baseLoad = await loadSkillsForMode(options.mode, options.artifactType);
+  let skillContent = baseLoad.content;
+  const skillNames = [...baseLoad.skillNames];
+
+  if (options.extraInstalledSkillNames && options.extraInstalledSkillNames.length > 0) {
+    // Skip names that are already loaded as mode defaults to avoid duplicate sections.
+    const fresh = options.extraInstalledSkillNames.filter(
+      (n) => !skillNames.includes(n)
+    );
+    if (fresh.length > 0) {
+      const extraContent = await loadSkills(fresh);
+      if (extraContent) {
+        skillContent += `\n\n---\n\n${extraContent}`;
+        skillNames.push(...fresh);
+      }
+    }
+  }
 
   // Build sections in order
   const sections: string[] = [];

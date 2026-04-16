@@ -39,7 +39,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const content = loadSkills([name]);
+    const content = await loadSkills([name]);
     return NextResponse.json({ content });
   } catch (err) {
     return NextResponse.json(

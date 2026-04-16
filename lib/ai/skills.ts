@@ -18,6 +18,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { SessionMode, ArtifactType } from '@/types';
+import { getInstalledSkillByName } from '@/lib/db/installed-skills';
 
 const SKILLS_DIR = join(process.cwd(), 'skills');
 
@@ -75,7 +76,7 @@ function isValidSkillName(name: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(name);
 }
 
-export function loadSkills(skillNames: string[]): string {
+export async function loadSkills(skillNames: string[]): Promise<string> {
   const sections: string[] = [];
   const now = Date.now();
 
@@ -86,15 +87,22 @@ export function loadSkills(skillNames: string[]): string {
       );
     }
 
-    // Check cache first
+    // 1. DB-installed skill wins on name collision (issue #78 contract).
+    const installed = await getInstalledSkillByName(name);
+    if (installed) {
+      sections.push(`## Skill: ${name}\n\n${installed.skillContent}`);
+      continue;
+    }
+
+    // 2. Filesystem cache hit
     const cached = skillCache.get(name);
     if (cached && now - cached.loadedAt < SKILL_CACHE_TTL) {
       sections.push(`## Skill: ${name}\n\n${cached.content}`);
       continue;
     }
 
+    // 3. Filesystem read
     const filePath = join(SKILLS_DIR, name, 'SKILL.md');
-
     let content: string;
     try {
       content = readFileSync(filePath, 'utf-8');
@@ -113,9 +121,7 @@ export function loadSkills(skillNames: string[]): string {
       );
     }
 
-    // Cache the loaded content
     skillCache.set(name, { content, loadedAt: now });
-
     sections.push(`## Skill: ${name}\n\n${content}`);
   }
 
@@ -128,10 +134,10 @@ export function loadSkills(skillNames: string[]): string {
  *
  * @throws Error if mode is invalid or artifact type is missing for create mode.
  */
-export function loadSkillsForMode(
+export async function loadSkillsForMode(
   mode: SessionMode,
   artifactType?: ArtifactType
-): { content: string; skillNames: string[] } {
+): Promise<{ content: string; skillNames: string[] }> {
   let skillNames: string[];
 
   if (mode === 'create') {
@@ -141,14 +147,13 @@ export function loadSkillsForMode(
           'Specify the type of content to create.'
       );
     }
-    skillNames =
-      ARTIFACT_TYPE_SKILLS[artifactType] ?? DEFAULT_CREATE_SKILLS;
+    skillNames = ARTIFACT_TYPE_SKILLS[artifactType] ?? DEFAULT_CREATE_SKILLS;
   } else {
     skillNames = MODE_SKILLS[mode];
   }
 
   return {
-    content: loadSkills(skillNames),
+    content: await loadSkills(skillNames),
     skillNames,
   };
 }
