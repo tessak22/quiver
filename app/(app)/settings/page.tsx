@@ -148,7 +148,7 @@ export default function SettingsPage() {
   const [installAdvanced, setInstallAdvanced] = useState(false);
   const [installBusy, setInstallBusy] = useState(false);
   const [installMsg, setInstallMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-  const [skillBusy, setSkillBusy] = useState<string | null>(null);
+  const [skillBusy, setSkillBusy] = useState<{ id: string; op: 'toggle' | 'update' | 'remove' } | null>(null);
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
 
   // Notification prefs
@@ -394,7 +394,7 @@ export default function SettingsPage() {
   }
 
   async function handleToggleSkill(id: string) {
-    setSkillBusy(id);
+    setSkillBusy({ id, op: 'toggle' });
     try {
       const res = await fetch(`/api/skills/${id}/toggle`, { method: 'POST' });
       const data = (await res.json()) as { skill?: InstalledSkillRecord; error?: string };
@@ -409,15 +409,13 @@ export default function SettingsPage() {
   }
 
   async function handleUpdateSkill(id: string) {
-    setSkillBusy(id);
+    setSkillBusy({ id, op: 'update' });
     try {
       const res = await fetch(`/api/skills/${id}`, { method: 'PATCH' });
       const data = (await res.json()) as { skill?: InstalledSkillRecord; error?: string };
-      if (!res.ok) throw new Error(data.error ?? 'Update failed');
-      if (data.skill) {
-        const updated = data.skill;
-        setInstalledSkills((prev) => prev.map((s) => (s.id === id ? updated : s)));
-      }
+      if (!res.ok || !data.skill) throw new Error(data.error ?? 'Update failed');
+      const updated = data.skill;
+      setInstalledSkills((prev) => prev.map((s) => (s.id === id ? updated : s)));
       toast.success('Skill updated.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Update failed');
@@ -427,7 +425,7 @@ export default function SettingsPage() {
   }
 
   async function handleRemoveSkill(id: string) {
-    setSkillBusy(id);
+    setSkillBusy({ id, op: 'remove' });
     try {
       const res = await fetch(`/api/skills/${id}`, { method: 'DELETE' });
       if (!res.ok && res.status !== 204) {
@@ -835,7 +833,8 @@ export default function SettingsPage() {
               ) : (
                 <ul className="divide-y divide-border rounded-md border">
                   {installedSkills.map((skill) => {
-                    const isBusy = skillBusy === skill.id;
+                    const busyOp = skillBusy?.id === skill.id ? skillBusy.op : null;
+                    const isBusy = busyOp !== null;
                     const showRemoveConfirm = removeConfirmId === skill.id;
                     return (
                       <li key={skill.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -879,7 +878,7 @@ export default function SettingsPage() {
                               onClick={() => handleUpdateSkill(skill.id)}
                               disabled={isBusy}
                             >
-                              {isBusy ? 'Updating...' : 'Update'}
+                              {busyOp === 'update' ? 'Updating...' : 'Update'}
                             </Button>
                             {showRemoveConfirm ? (
                               <>
@@ -938,13 +937,15 @@ export default function SettingsPage() {
                         {installBusy ? 'Installing...' : 'Install'}
                       </Button>
                     </div>
-                    <button
+                    <Button
                       type="button"
-                      className="text-xs text-muted-foreground underline"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs text-muted-foreground"
                       onClick={() => setInstallAdvanced((v) => !v)}
                     >
                       {installAdvanced ? 'Hide advanced' : 'Advanced'}
-                    </button>
+                    </Button>
                     {installAdvanced && (
                       <div className="space-y-1.5">
                         <Label htmlFor="install-ref">Branch or tag</Label>
