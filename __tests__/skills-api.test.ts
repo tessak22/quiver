@@ -165,6 +165,24 @@ describe('POST /api/skills/install', () => {
       })
     );
   });
+
+  it('returns 409 when concurrent install hits the unique constraint', async () => {
+    mockedFetch.mockResolvedValue({
+      name: 'foo',
+      description: 'd',
+      skillContent: '# body',
+      references: [],
+      githubRef: 'main',
+    });
+    const p2002 = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+    vi.mocked(createInstalledSkill).mockRejectedValue(p2002);
+    const res = await installPOST(
+      makeJsonRequest('http://localhost/api/skills/install', { githubRepo: 'a/b' })
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/already installed/i);
+  });
 });
 
 describe('PATCH /api/skills/[id]', () => {

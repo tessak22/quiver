@@ -61,16 +61,39 @@ export async function POST(request: Request) {
     );
   }
 
-  const skill = await createInstalledSkill({
-    source: 'github',
-    githubRepo,
-    githubRef: fetched.githubRef,
-    name: fetched.name,
-    description: fetched.description,
-    skillContent: fetched.skillContent,
-    references: fetched.references,
-    installedBy: auth.id,
-  });
+  let skill;
+  try {
+    skill = await createInstalledSkill({
+      source: 'github',
+      githubRepo,
+      githubRef: fetched.githubRef,
+      name: fetched.name,
+      description: fetched.description,
+      skillContent: fetched.skillContent,
+      references: fetched.references,
+      installedBy: auth.id,
+    });
+  } catch (err) {
+    // P2002 = Prisma unique constraint violation. Two requests can race past
+    // the getInstalledSkillByRepo check above; the unique index on githubRepo
+    // catches it here, so we surface a 409 instead of a raw 500.
+    if (isUniqueConstraintError(err)) {
+      return NextResponse.json(
+        { error: 'Skill already installed. Use update to refresh it.' },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   return NextResponse.json({ skill }, { status: 201 });
+}
+
+function isUniqueConstraintError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: unknown }).code === 'P2002'
+  );
 }
