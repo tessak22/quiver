@@ -574,4 +574,30 @@ export function registerContentTools(server: McpServer) {
       }
     }
   );
+
+  // -----------------------------------------------------------------------
+  // delete_content
+  // -----------------------------------------------------------------------
+  server.tool(
+    'delete_content',
+    'Hard delete a content piece. Accepts content ID, slug, or title partial match. Distributions and metric snapshots cascade; derived content (parentContentId children) nulls out.',
+    {
+      content_id: z.string().optional().describe('Content piece ID'),
+      slug: z.string().optional().describe('Content piece slug'),
+      title: z.string().optional().describe('Content piece title (case-insensitive partial match)'),
+    },
+    async (args) => {
+      try {
+        const piece = await resolveContentPiece(args.content_id, args.slug, args.title);
+        if (!piece) {
+          return error('Content piece not found.');
+        }
+        await prisma.contentPiece.delete({ where: { id: piece.id } });
+        return text(`Deleted content piece '${piece.title}' (slug: ${piece.slug ?? 'none'}).`);
+      } catch (err) {
+        console.error('[quiver-mcp] delete_content error:', err);
+        return error(err instanceof Error ? err.message : 'Failed to delete content');
+      }
+    }
+  );
 }

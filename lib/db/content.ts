@@ -508,3 +508,9 @@ export function getContentPerformanceSignal(
   if (latest < avg * 0.5) return 'weak';
   return 'logging';
 }
+
+// Hard delete — distributions + metricSnapshots cascade via schema;
+// derived content (parentContentId → this) nulls out via Prisma default SetNull.
+export async function deleteContentPiece(id: string) {
+  return prisma.contentPiece.delete({ where: { id } });
+}
