@@ -289,3 +289,24 @@ model ContentMetricSnapshot {
 
   @@map("content_metric_snapshots")
 }
+
+model InstalledSkill {
+  id            String   @id @default(uuid())
+  source        String
+  githubRepo    String?
+  githubRef     String?
+  name          String
+  description   String
+  skillContent  String
+  references    Json     @default("[]")
+  isEnabled     Boolean  @default(true)
+  installedBy   String
+  installedAt   DateTime @default(now())
+  lastFetchedAt DateTime @default(now())
+  fetchError    String?
+
+  @@unique([githubRepo])
+  @@index([isEnabled])
+  @@index([name])
+  @@map("installed_skills")
+}
