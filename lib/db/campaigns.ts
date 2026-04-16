@@ -215,6 +215,64 @@ export async function archiveCampaign(id: string) {
 }
 
 // -------------------------------------------------------------------------
+// Hard delete — refuses when any child record exists. Prisma defaults
+// would block on required FKs (artifacts, perf logs) and silently null
+// optional FKs (sessions, content, research); we pre-count all five so
+// the UX is consistent and the caller knows exactly what's attached.
+// -------------------------------------------------------------------------
+
+export interface CampaignChildCounts {
+  artifacts: number;
+  sessions: number;
+  performanceLogs: number;
+  contentPieces: number;
+  researchEntries: number;
+}
+
+export class CampaignNotEmptyError extends Error {
+  readonly counts: CampaignChildCounts;
+  constructor(counts: CampaignChildCounts) {
+    const parts: string[] = [];
+    if (counts.artifacts) parts.push(`${counts.artifacts} artifact${counts.artifacts === 1 ? '' : 's'}`);
+    if (counts.sessions) parts.push(`${counts.sessions} session${counts.sessions === 1 ? '' : 's'}`);
+    if (counts.performanceLogs) parts.push(`${counts.performanceLogs} performance log${counts.performanceLogs === 1 ? '' : 's'}`);
+    if (counts.contentPieces) parts.push(`${counts.contentPieces} content piece${counts.contentPieces === 1 ? '' : 's'}`);
+    if (counts.researchEntries) parts.push(`${counts.researchEntries} research ${counts.researchEntries === 1 ? 'entry' : 'entries'}`);
+    super(`Campaign has attached records: ${parts.join(', ')}. Move or delete them first.`);
+    this.name = 'CampaignNotEmptyError';
+    this.counts = counts;
+  }
+}
+
+export async function deleteCampaign(id: string) {
+  const campaign = await prisma.campaign.findUnique({ where: { id } });
+  if (!campaign) {
+    throw new Error(`Campaign not found: ${id}`);
+  }
+
+  const [artifacts, sessions, performanceLogs, contentPieces, researchEntries] = await Promise.all([
+    prisma.artifact.count({ where: { campaignId: id } }),
+    prisma.session.count({ where: { campaignId: id } }),
+    prisma.performanceLog.count({ where: { campaignId: id } }),
+    prisma.contentPiece.count({ where: { campaignId: id } }),
+    prisma.researchEntry.count({ where: { campaignId: id } }),
+  ]);
+
+  const counts: CampaignChildCounts = {
+    artifacts,
+    sessions,
+    performanceLogs,
+    contentPieces,
+    researchEntries,
+  };
+  if (artifacts + sessions + performanceLogs + contentPieces + researchEntries > 0) {
+    throw new CampaignNotEmptyError(counts);
+  }
+
+  return prisma.campaign.delete({ where: { id } });
+}
+
+// -------------------------------------------------------------------------
 // Related data for detail tabs
 // -------------------------------------------------------------------------
 
