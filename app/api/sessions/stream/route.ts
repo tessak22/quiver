@@ -148,12 +148,13 @@ export async function POST(request: Request) {
   const parsed = await parseJsonBody(request);
   if (parsed.error) return parsed.error;
 
-  const { sessionId, message, mode, artifactType, campaignId } = parsed.data as {
+  const { sessionId, message, mode, artifactType, campaignId, extraSkills } = parsed.data as {
     sessionId?: string;
     message: string;
     mode: SessionMode;
     artifactType?: ArtifactType;
     campaignId?: string;
+    extraSkills?: string[];
   };
 
   if (!message || typeof message !== 'string') {
@@ -183,6 +184,9 @@ export async function POST(request: Request) {
         mode,
         artifactType,
         campaignId,
+        extraInstalledSkillNames: Array.isArray(extraSkills)
+          ? extraSkills.filter((s): s is string => typeof s === 'string')
+          : undefined,
       });
 
     // 6. Create session if new
