@@ -12,6 +12,7 @@ import {
   PUBLIC_ROUTES,
   MEMBERSHIP_EXEMPT_ROUTES,
   ONBOARDING_EXEMPT_ROUTES,
+  matchesRoute,
   resolveRoute,
   type RoutingContext,
 } from '@/lib/middleware-routing';
@@ -19,6 +20,25 @@ import {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe('matchesRoute helper (boundary-safe prefix matching)', () => {
+  it('matches exact path', () => {
+    expect(matchesRoute('/api/mcp', '/api/mcp')).toBe(true);
+  });
+
+  it('matches subpath with / boundary', () => {
+    expect(matchesRoute('/api/mcp/stream', '/api/mcp')).toBe(true);
+  });
+
+  it('does NOT match sibling with shared prefix', () => {
+    expect(matchesRoute('/api/mcp-admin', '/api/mcp')).toBe(false);
+    expect(matchesRoute('/loginfoo', '/login')).toBe(false);
+  });
+
+  it('does NOT match unrelated paths', () => {
+    expect(matchesRoute('/dashboard', '/api/mcp')).toBe(false);
+  });
+});
 
 describe('Route classification', () => {
   it('/api/auth/logout is membership-exempt', () => {
@@ -36,6 +56,12 @@ describe('Route classification', () => {
   it('/login is a public route', () => {
     expect(
       PUBLIC_ROUTES.some((r) => '/login'.startsWith(r))
+    ).toBe(true);
+  });
+
+  it('/api/mcp is a public route (enforces its own Bearer auth)', () => {
+    expect(
+      PUBLIC_ROUTES.some((r) => '/api/mcp'.startsWith(r))
     ).toBe(true);
   });
 
@@ -99,6 +125,60 @@ describe('Unauthenticated users', () => {
       contextQueryFailed: false,
     });
     expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('allows access to /api/mcp (MCP handler enforces its own Bearer auth)', () => {
+    const result = resolveRoute({
+      pathname: '/api/mcp',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: false,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('allows access to /api/mcp subpaths', () => {
+    const result = resolveRoute({
+      pathname: '/api/mcp/stream',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: false,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  // Prefix-match boundary: a sibling route like /api/mcp-admin must NOT be
+  // treated as public just because its path starts with "/api/mcp".
+  it('does NOT treat /api/mcp-admin as public (boundary-safe matching)', () => {
+    const result = resolveRoute({
+      pathname: '/api/mcp-admin',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/login' });
+  });
+
+  it('does NOT treat /loginfoo as public (boundary-safe matching)', () => {
+    const result = resolveRoute({
+      pathname: '/loginfoo',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/login' });
   });
 });
 

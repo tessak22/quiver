@@ -4,6 +4,7 @@ import {
   PUBLIC_ROUTES,
   MEMBERSHIP_EXEMPT_ROUTES,
   ONBOARDING_EXEMPT_ROUTES,
+  matchesRoute,
   resolveRoute,
   type RoutingDecision,
 } from '@/lib/middleware-routing';
@@ -57,14 +58,14 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   const isPublicRoute = PUBLIC_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
   const isShareApi = pathname.match(/^\/api\/sessions\/[^/]+\/share/) !== null;
   const isMembershipExempt = MEMBERSHIP_EXEMPT_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
   const isOnboardingExempt = ONBOARDING_EXEMPT_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
 
   // ---------------------------------------------------------------------------

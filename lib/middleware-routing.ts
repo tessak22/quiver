@@ -10,7 +10,11 @@
 // Route lists
 // ---------------------------------------------------------------------------
 
-export const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public'];
+// `/api/mcp` exposes the MCP Streamable HTTP transport for remote clients
+// (Claude Code `.mcp.json`, browser connectors, etc.). It runs its own
+// Bearer-token auth via MCP_AUTH_SECRET, so it must bypass the Supabase
+// session gate — otherwise unauthenticated MCP requests get 307'd to /login.
+export const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public', '/api/mcp'];
 
 /** Routes that require auth but NOT team membership (pre-membership flows) */
 export const MEMBERSHIP_EXEMPT_ROUTES = [
@@ -58,11 +62,23 @@ export type RoutingDecision =
 // Pure routing function
 // ---------------------------------------------------------------------------
 
+/**
+ * Boundary-safe route match: true when pathname is exactly `route` or a
+ * subpath (e.g. `/api/mcp` or `/api/mcp/foo`), but NOT when `route` is just
+ * a prefix of a sibling (`/api/mcp-admin` must not match `/api/mcp`).
+ *
+ * Exported so middleware.ts can use the exact same classification when
+ * deciding whether to skip membership/context DB queries.
+ */
+export function matchesRoute(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(route + '/');
+}
+
 export function resolveRoute(ctx: RoutingContext): RoutingDecision {
   const { pathname, user } = ctx;
 
   const isPublicRoute = PUBLIC_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
   const isShareApi = /^\/api\/sessions\/[^/]+\/share/.test(pathname);
 
@@ -77,7 +93,7 @@ export function resolveRoute(ctx: RoutingContext): RoutingDecision {
   }
 
   const isMembershipExempt = MEMBERSHIP_EXEMPT_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
 
   // Membership check for non-public, non-exempt, non-share routes
@@ -97,7 +113,7 @@ export function resolveRoute(ctx: RoutingContext): RoutingDecision {
 
   // Onboarding check — uses ONBOARDING_EXEMPT_ROUTES (not membership list)
   const isOnboardingExempt = ONBOARDING_EXEMPT_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
 
   if (user && !isPublicRoute && !isOnboardingExempt && !isShareApi) {
