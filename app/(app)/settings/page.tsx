@@ -131,6 +131,19 @@ export default function SettingsPage() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState(false);
 
+  // Direct create form (for workspaces without email delivery)
+  const [createEmail, setCreateEmail] = useState('');
+  const [createName, setCreateName] = useState('');
+  const [createRole, setCreateRole] = useState<TeamRole>('member');
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    email: string;
+    name: string;
+    password: string;
+  } | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
+
   // Role change
   const [roleChangeBusy, setRoleChangeBusy] = useState<string | null>(null);
 
@@ -254,6 +267,61 @@ export default function SettingsPage() {
       setInviteError(err instanceof Error ? err.message : 'Failed to send invite');
     } finally {
       setInviteBusy(false);
+    }
+  }
+
+  // ---- Direct-create handler (no email) ----
+  async function handleCreateMember() {
+    if (!createEmail.trim() || !createName.trim()) return;
+    setCreateBusy(true);
+    setCreateError(null);
+
+    try {
+      const res = await fetch('/api/team/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: createEmail.trim(),
+          name: createName.trim(),
+          role: createRole,
+        }),
+      });
+
+      const data = (await res.json()) as {
+        email?: string;
+        name?: string;
+        password?: string;
+        error?: string;
+      };
+
+      if (!res.ok || !data.email || !data.password) {
+        throw new Error(data.error || 'Failed to create member');
+      }
+
+      setCreatedCredentials({
+        email: data.email,
+        name: data.name ?? createName.trim(),
+        password: data.password,
+      });
+      setCreateEmail('');
+      setCreateName('');
+      setCreateRole('member');
+      setPasswordCopied(false);
+      await loadData();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create member');
+    } finally {
+      setCreateBusy(false);
+    }
+  }
+
+  async function handleCopyPassword() {
+    if (!createdCredentials) return;
+    try {
+      await navigator.clipboard.writeText(createdCredentials.password);
+      setPasswordCopied(true);
+    } catch {
+      setPasswordCopied(false);
     }
   }
 
@@ -751,10 +819,136 @@ export default function SettingsPage() {
                       create or modify content.
                     </p>
                   </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-base font-semibold">
+                        Add a member directly
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Use this when email delivery isn&apos;t set up. We&apos;ll generate a
+                        password that you can share with them over a secure channel.
+                      </p>
+                    </div>
+
+                    {createError && (
+                      <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                        {createError}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="flex-1 min-w-[220px] space-y-1.5">
+                        <Label htmlFor="create-email">Email address</Label>
+                        <Input
+                          id="create-email"
+                          type="email"
+                          placeholder="teammate@company.com"
+                          value={createEmail}
+                          onChange={(e) => setCreateEmail(e.target.value)}
+                          disabled={createBusy}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-[180px] space-y-1.5">
+                        <Label htmlFor="create-name">Name</Label>
+                        <Input
+                          id="create-name"
+                          type="text"
+                          placeholder="Jane Doe"
+                          value={createName}
+                          onChange={(e) => setCreateName(e.target.value)}
+                          disabled={createBusy}
+                        />
+                      </div>
+                      <div className="w-[140px] space-y-1.5">
+                        <Label htmlFor="create-role">Role</Label>
+                        <Select
+                          value={createRole}
+                          onValueChange={(val) =>
+                            setCreateRole(val as TeamRole)
+                          }
+                          disabled={createBusy}
+                        >
+                          <SelectTrigger id="create-role">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="member">Member</SelectItem>
+                            <SelectItem value="viewer">Viewer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        onClick={handleCreateMember}
+                        disabled={
+                          createBusy ||
+                          !createEmail.trim() ||
+                          !createName.trim()
+                        }
+                      >
+                        {createBusy ? 'Creating...' : 'Create member'}
+                      </Button>
+                    </div>
+                  </div>
                 </>
               )}
             </CardContent>
           </Card>
+
+          {/* ---- Password reveal dialog (shown once per create) ---- */}
+          <Dialog
+            open={createdCredentials !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setCreatedCredentials(null);
+                setPasswordCopied(false);
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Account created</DialogTitle>
+                <DialogDescription>
+                  Copy the password now — it won&apos;t be shown again. Share it
+                  with {createdCredentials?.name ?? 'the new member'} over a
+                  secure channel (e.g. 1Password).
+                </DialogDescription>
+              </DialogHeader>
+              {createdCredentials && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Email</Label>
+                    <Input readOnly value={createdCredentials.email} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Password</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        readOnly
+                        value={createdCredentials.password}
+                        className="font-mono"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleCopyPassword}
+                      >
+                        {passwordCopied ? 'Copied' : 'Copy'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Done</Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         {/* ================================================================

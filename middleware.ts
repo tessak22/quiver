@@ -8,6 +8,7 @@ import {
   resolveRoute,
   type RoutingDecision,
 } from '@/lib/middleware-routing';
+import { isTeamMember, hasActiveContext } from '@/lib/middleware-db';
 
 function applyDecision(
   decision: RoutingDecision,
@@ -80,18 +81,11 @@ export async function middleware(request: NextRequest) {
     if (cachedValue === user.id) {
       membershipCached = true;
     } else {
-      const { data: member } = await supabase
-        .from('team_members')
-        .select('id')
-        .eq('id', user.id)
-        .limit(1)
-        .single();
-      isMember = !!member;
+      isMember = await isTeamMember(user.id);
     }
   }
 
   // Context query — needed for non-member redirect and onboarding gate.
-  // Uses maybeSingle() so zero rows returns null/null (not an error).
   let activeContextExists = false;
   let contextQueryFailed = false;
 
@@ -103,14 +97,9 @@ export async function middleware(request: NextRequest) {
      (!isOnboardingExempt && !request.cookies.get('quiver_onboarded')?.value));
 
   if (needsContextCheck) {
-    const { data: activeContext, error: contextError } = await supabase
-      .from('context_versions')
-      .select('id')
-      .eq('isActive', true)
-      .limit(1)
-      .maybeSingle();
-    activeContextExists = !!activeContext;
-    contextQueryFailed = !!contextError;
+    const result = await hasActiveContext();
+    activeContextExists = result.exists;
+    contextQueryFailed = result.failed;
   }
 
   const onboardingComplete = !!request.cookies.get('quiver_onboarded')?.value;
