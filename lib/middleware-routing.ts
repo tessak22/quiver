@@ -62,11 +62,20 @@ export type RoutingDecision =
 // Pure routing function
 // ---------------------------------------------------------------------------
 
+/**
+ * Boundary-safe route match: true when pathname is exactly `route` or a
+ * subpath (e.g. `/api/mcp` or `/api/mcp/foo`), but NOT when `route` is just
+ * a prefix of a sibling (`/api/mcp-admin` must not match `/api/mcp`).
+ */
+function matchesRoute(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(route + '/');
+}
+
 export function resolveRoute(ctx: RoutingContext): RoutingDecision {
   const { pathname, user } = ctx;
 
   const isPublicRoute = PUBLIC_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
   const isShareApi = /^\/api\/sessions\/[^/]+\/share/.test(pathname);
 
@@ -81,7 +90,7 @@ export function resolveRoute(ctx: RoutingContext): RoutingDecision {
   }
 
   const isMembershipExempt = MEMBERSHIP_EXEMPT_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
 
   // Membership check for non-public, non-exempt, non-share routes
@@ -101,7 +110,7 @@ export function resolveRoute(ctx: RoutingContext): RoutingDecision {
 
   // Onboarding check — uses ONBOARDING_EXEMPT_ROUTES (not membership list)
   const isOnboardingExempt = ONBOARDING_EXEMPT_ROUTES.some((route) =>
-    pathname.startsWith(route)
+    matchesRoute(pathname, route)
   );
 
   if (user && !isPublicRoute && !isOnboardingExempt && !isShareApi) {

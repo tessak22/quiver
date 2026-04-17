@@ -119,6 +119,47 @@ describe('Unauthenticated users', () => {
     });
     expect(result).toEqual({ action: 'pass' });
   });
+
+  it('allows access to /api/mcp subpaths', () => {
+    const result = resolveRoute({
+      pathname: '/api/mcp/stream',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: false,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  // Prefix-match boundary: a sibling route like /api/mcp-admin must NOT be
+  // treated as public just because its path starts with "/api/mcp".
+  it('does NOT treat /api/mcp-admin as public (boundary-safe matching)', () => {
+    const result = resolveRoute({
+      pathname: '/api/mcp-admin',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/login' });
+  });
+
+  it('does NOT treat /loginfoo as public (boundary-safe matching)', () => {
+    const result = resolveRoute({
+      pathname: '/loginfoo',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: false,
+    });
+    expect(result).toEqual({ action: 'redirect', to: '/login' });
+  });
 });
 
 describe('Authenticated non-member (issue #53 lockout)', () => {
