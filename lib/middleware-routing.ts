@@ -66,8 +66,11 @@ export type RoutingDecision =
  * Boundary-safe route match: true when pathname is exactly `route` or a
  * subpath (e.g. `/api/mcp` or `/api/mcp/foo`), but NOT when `route` is just
  * a prefix of a sibling (`/api/mcp-admin` must not match `/api/mcp`).
+ *
+ * Exported so middleware.ts can use the exact same classification when
+ * deciding whether to skip membership/context DB queries.
  */
-function matchesRoute(pathname: string, route: string): boolean {
+export function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(route + '/');
 }
 

@@ -12,6 +12,7 @@ import {
   PUBLIC_ROUTES,
   MEMBERSHIP_EXEMPT_ROUTES,
   ONBOARDING_EXEMPT_ROUTES,
+  matchesRoute,
   resolveRoute,
   type RoutingContext,
 } from '@/lib/middleware-routing';
@@ -19,6 +20,25 @@ import {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe('matchesRoute helper (boundary-safe prefix matching)', () => {
+  it('matches exact path', () => {
+    expect(matchesRoute('/api/mcp', '/api/mcp')).toBe(true);
+  });
+
+  it('matches subpath with / boundary', () => {
+    expect(matchesRoute('/api/mcp/stream', '/api/mcp')).toBe(true);
+  });
+
+  it('does NOT match sibling with shared prefix', () => {
+    expect(matchesRoute('/api/mcp-admin', '/api/mcp')).toBe(false);
+    expect(matchesRoute('/loginfoo', '/login')).toBe(false);
+  });
+
+  it('does NOT match unrelated paths', () => {
+    expect(matchesRoute('/dashboard', '/api/mcp')).toBe(false);
+  });
+});
 
 describe('Route classification', () => {
   it('/api/auth/logout is membership-exempt', () => {
