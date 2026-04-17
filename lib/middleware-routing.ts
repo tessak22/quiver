@@ -10,7 +10,11 @@
 // Route lists
 // ---------------------------------------------------------------------------
 
-export const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public'];
+// `/api/mcp` exposes the MCP Streamable HTTP transport for remote clients
+// (Claude Code `.mcp.json`, browser connectors, etc.). It runs its own
+// Bearer-token auth via MCP_AUTH_SECRET, so it must bypass the Supabase
+// session gate — otherwise unauthenticated MCP requests get 307'd to /login.
+export const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public', '/api/mcp'];
 
 /** Routes that require auth but NOT team membership (pre-membership flows) */
 export const MEMBERSHIP_EXEMPT_ROUTES = [

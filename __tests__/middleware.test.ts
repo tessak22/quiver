@@ -39,6 +39,12 @@ describe('Route classification', () => {
     ).toBe(true);
   });
 
+  it('/api/mcp is a public route (enforces its own Bearer auth)', () => {
+    expect(
+      PUBLIC_ROUTES.some((r) => '/api/mcp'.startsWith(r))
+    ).toBe(true);
+  });
+
   it('/access-denied is NOT onboarding-exempt', () => {
     expect(
       ONBOARDING_EXEMPT_ROUTES.some((r) => '/access-denied'.startsWith(r))
@@ -91,6 +97,19 @@ describe('Unauthenticated users', () => {
   it('allows access to share API', () => {
     const result = resolveRoute({
       pathname: '/api/sessions/abc123/share',
+      user: null,
+      isMember: false,
+      membershipCached: false,
+      onboardingComplete: false,
+      activeContextExists: false,
+      contextQueryFailed: false,
+    });
+    expect(result).toEqual({ action: 'pass' });
+  });
+
+  it('allows access to /api/mcp (MCP handler enforces its own Bearer auth)', () => {
+    const result = resolveRoute({
+      pathname: '/api/mcp',
       user: null,
       isMember: false,
       membershipCached: false,
