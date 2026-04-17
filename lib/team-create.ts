@@ -20,6 +20,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getSupabaseAdminClient } from '@/lib/env';
 import type { TeamRole } from '@/types';
@@ -30,6 +31,30 @@ export interface CreateTeamMemberResult {
   name: string;
   role: TeamRole;
   password: string;
+}
+
+/**
+ * Thrown when the requested email collides with an existing account —
+ * either in Supabase Auth (auth.users.email) or in Neon (team_members.email).
+ * Callers should translate this to a 409 with a safe, user-facing message
+ * instead of exposing the underlying Prisma/Supabase error text.
+ */
+export class TeamMemberAlreadyExistsError extends Error {
+  constructor(email: string) {
+    super(`A team member with email ${email} already exists`);
+    this.name = 'TeamMemberAlreadyExistsError';
+  }
+}
+
+function isSupabaseDuplicateEmailError(err: {
+  status?: number;
+  message?: string;
+} | null): boolean {
+  if (!err) return false;
+  // Supabase returns 422 "User already registered" for email collisions via
+  // the admin createUser API.
+  if (err.status === 422) return true;
+  return /already (been )?registered/i.test(err.message ?? '');
 }
 
 function generatePassword(): string {
@@ -55,6 +80,9 @@ export async function createTeamMember(params: {
     user_metadata: { name, role },
   });
   if (error || !data.user) {
+    if (isSupabaseDuplicateEmailError(error)) {
+      throw new TeamMemberAlreadyExistsError(email);
+    }
     throw new Error(`Auth user creation failed: ${error?.message ?? 'no user returned'}`);
   }
   const userId = data.user.id;
@@ -76,6 +104,15 @@ export async function createTeamMember(params: {
         userId,
         rollbackErr,
       });
+    }
+    // Unique-email collision at the DB layer (team_members.email @unique)
+    // surfaces as Prisma P2002. Translate to the typed error so the route
+    // can return a safe 409 instead of leaking internal SQL details.
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2002'
+    ) {
+      throw new TeamMemberAlreadyExistsError(email);
     }
     throw err;
   }

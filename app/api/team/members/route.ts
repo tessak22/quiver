@@ -17,7 +17,7 @@ import { NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth';
 import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 import { TEAM_ROLES, type TeamRole } from '@/types';
-import { createTeamMember } from '@/lib/team-create';
+import { createTeamMember, TeamMemberAlreadyExistsError } from '@/lib/team-create';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -51,11 +51,20 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
-    const message = safeErrorMessage(err, 'Failed to create team member');
-    const status = /already (been )?registered|already exists|duplicate/i.test(message)
-      ? 409
-      : 500;
     console.error('[team/members] create failed', { email, role, error: err });
-    return NextResponse.json({ error: message }, { status });
+
+    if (err instanceof TeamMemberAlreadyExistsError) {
+      // Sanitized message — do not leak internal error text to the client
+      // on a dupe. `email` is already from the request, so safe to echo.
+      return NextResponse.json(
+        { error: `A team member with email ${email} already exists` },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: safeErrorMessage(err, 'Failed to create team member') },
+      { status: 500 },
+    );
   }
 }

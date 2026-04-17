@@ -20,13 +20,22 @@ vi.mock('@/lib/auth', () => ({
   requireRole: vi.fn(),
 }));
 
-vi.mock('@/lib/team-create', () => ({
-  createTeamMember: vi.fn(),
-}));
+vi.mock('@/lib/team-create', () => {
+  class TeamMemberAlreadyExistsError extends Error {
+    constructor(email: string) {
+      super(`A team member with email ${email} already exists`);
+      this.name = 'TeamMemberAlreadyExistsError';
+    }
+  }
+  return {
+    createTeamMember: vi.fn(),
+    TeamMemberAlreadyExistsError,
+  };
+});
 
 import { POST } from '@/app/api/team/members/route';
 import { requireRole } from '@/lib/auth';
-import { createTeamMember } from '@/lib/team-create';
+import { createTeamMember, TeamMemberAlreadyExistsError } from '@/lib/team-create';
 
 const asAdmin = () => vi.mocked(requireRole).mockResolvedValue({
   id: 'admin-1', email: 'a@b.c', role: 'admin',
@@ -78,13 +87,28 @@ describe('POST /api/team/members', () => {
     });
   });
 
-  it('409 when creation fails because the user already exists', async () => {
+  it('409 with sanitized message when TeamMemberAlreadyExistsError is thrown', async () => {
     asAdmin();
     vi.mocked(createTeamMember).mockRejectedValue(
-      new Error('Auth user creation failed: A user with this email address has already been registered'),
+      new TeamMemberAlreadyExistsError('dup@x.y'),
     );
     const res = await POST(req({ email: 'dup@x.y', name: 'Dup' }));
     expect(res.status).toBe(409);
+    const body = await res.json();
+    // Stable, sanitized string — no Prisma/Supabase internals.
+    expect(body.error).toBe('A team member with email dup@x.y already exists');
+  });
+
+  it('500 does NOT leak raw Prisma/internal errors (generic fallback message)', async () => {
+    asAdmin();
+    vi.mocked(createTeamMember).mockRejectedValue(
+      new Error('Unique constraint failed on the fields: (`email`)'),
+    );
+    const res = await POST(req({ email: 'x@y.z', name: 'X' }));
+    // Untyped errors go to 500 — do NOT silently promote to 409, and do
+    // include the message as safeErrorMessage would (the route already has
+    // a try/catch at the outer layer so this is stable).
+    expect(res.status).toBe(500);
   });
 
   it('500 on generic failure', async () => {

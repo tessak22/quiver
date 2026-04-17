@@ -21,7 +21,23 @@ vi.mock('@/lib/db', () => ({
   prisma: { teamMember: { upsert } },
 }));
 
-import { createTeamMember } from '@/lib/team-create';
+// Provide a usable Prisma namespace for instanceof checks in team-create.ts.
+vi.mock('@prisma/client', () => {
+  class PrismaClientKnownRequestError extends Error {
+    code: string;
+    clientVersion: string;
+    constructor(message: string, opts: { code: string; clientVersion?: string }) {
+      super(message);
+      this.name = 'PrismaClientKnownRequestError';
+      this.code = opts.code;
+      this.clientVersion = opts.clientVersion ?? 'test';
+    }
+  }
+  return { Prisma: { PrismaClientKnownRequestError } };
+});
+
+import { createTeamMember, TeamMemberAlreadyExistsError } from '@/lib/team-create';
+import { Prisma } from '@prisma/client';
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -48,12 +64,24 @@ describe('createTeamMember', () => {
     expect(deleteUser).not.toHaveBeenCalled();
   });
 
-  it('throws if Supabase createUser fails', async () => {
-    createUser.mockResolvedValue({ data: { user: null }, error: { message: 'taken' } });
+  it('throws if Supabase createUser fails with a non-dupe error', async () => {
+    createUser.mockResolvedValue({ data: { user: null }, error: { message: 'taken', status: 500 } });
     await expect(
       createTeamMember({ email: 'x@y.z', name: 'X', role: 'member' }),
     ).rejects.toThrow(/taken/);
     expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('throws TeamMemberAlreadyExistsError on Supabase 422 dupe (pre-upsert)', async () => {
+    createUser.mockResolvedValue({
+      data: { user: null },
+      error: { status: 422, message: 'A user with this email address has already been registered' },
+    });
+    await expect(
+      createTeamMember({ email: 'dup@x.y', name: 'D', role: 'member' }),
+    ).rejects.toBeInstanceOf(TeamMemberAlreadyExistsError);
+    expect(upsert).not.toHaveBeenCalled();
+    expect(deleteUser).not.toHaveBeenCalled();
   });
 
   it('rolls back the Supabase user when Neon upsert fails', async () => {
@@ -64,5 +92,20 @@ describe('createTeamMember', () => {
       createTeamMember({ email: 'x@y.z', name: 'X', role: 'member' }),
     ).rejects.toThrow(/db down/);
     expect(deleteUser).toHaveBeenCalledWith('u-2');
+  });
+
+  it('throws TeamMemberAlreadyExistsError + rolls back on Prisma P2002 unique-email', async () => {
+    createUser.mockResolvedValue({ data: { user: { id: 'u-3' } }, error: null });
+    upsert.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed on the fields: (`email`)',
+        { code: 'P2002' },
+      ),
+    );
+
+    await expect(
+      createTeamMember({ email: 'x@y.z', name: 'X', role: 'member' }),
+    ).rejects.toBeInstanceOf(TeamMemberAlreadyExistsError);
+    expect(deleteUser).toHaveBeenCalledWith('u-3');
   });
 });
