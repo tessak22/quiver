@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { Paperclip, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
-import type { SessionMode, ArtifactType, ChatMessage, ArtifactReadyMarker } from '@/types';
+import type { SessionMode, ArtifactType, ChatMessage, ArtifactReadyMarker, AttachmentPayload } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -92,6 +93,51 @@ type SSEEvent =
   | SSEArtifactReadyEvent
   | SSEDoneEvent
   | SSEErrorEvent;
+
+// ---------------------------------------------------------------------------
+// Attachment types and helpers
+// ---------------------------------------------------------------------------
+
+interface PendingAttachment {
+  id: string;
+  file: File;
+  preview?: string; // data URL for images only
+}
+
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf',
+  'text/plain', 'text/markdown', 'text/x-markdown',
+]);
+const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3 MB — matches server; base64 overhead keeps payloads under Vercel's limit
+const MAX_FILES = 5;
+
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function readAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -201,10 +247,12 @@ function MessageBubble({
   message,
   isStreaming,
   sessionId,
+  attachmentNames,
 }: {
   message: ChatMessage;
   isStreaming?: boolean;
   sessionId?: string | null;
+  attachmentNames?: string[];
 }) {
   const isUser = message.role === 'user';
 
@@ -221,6 +269,19 @@ function MessageBubble({
           }`}
         >
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          {attachmentNames && attachmentNames.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {attachmentNames.map((name) => (
+                <span
+                  key={name}
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs bg-primary-foreground/20 text-primary-foreground"
+                >
+                  <Paperclip className="h-2.5 w-2.5" />
+                  {name}
+                </span>
+              ))}
+            </div>
+          )}
           {isStreaming && (
             <span className="inline-block w-2 h-4 ml-0.5 bg-current animate-pulse" />
           )}
@@ -390,9 +451,14 @@ export default function SessionChatPage() {
   const [shareLoading, setShareLoading] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
 
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  // Maps message list index → attachment filenames for display during live session
+  const [liveAttachmentNames, setLiveAttachmentNames] = useState<Map<number, string[]>>(new Map());
+
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const extraSkillsSentRef = useRef(false);
   const autoSentRef = useRef(false);
@@ -425,6 +491,7 @@ export default function SessionChatPage() {
       // Only overwrite messages on initial load — not during/after streaming
       if (isInitialLoad) {
         setMessages(parseMessages(data.session.messages));
+        setLiveAttachmentNames(new Map());
       }
       setSessionId(data.session.id);
     } catch (err) {
@@ -441,6 +508,16 @@ export default function SessionChatPage() {
       fetchSession(routeId, true);
     }
   }, [isNewSession, routeId, fetchSession]);
+
+  // Revoke any pending image preview object URLs on unmount
+  useEffect(() => {
+    return () => {
+      setPendingAttachments((prev) => {
+        prev.forEach((a) => { if (a.preview) URL.revokeObjectURL(a.preview); });
+        return [];
+      });
+    };
+  }, []);
 
   // Stable ref to the latest handleSendMessage — lets the one-shot effect below
   // call the up-to-date function without needing it in deps.
@@ -472,22 +549,91 @@ export default function SessionChatPage() {
   // Determine the mode for display and API calls
   const currentMode: SessionMode = (session?.mode as SessionMode) ?? initialMode ?? 'strategy';
 
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+
+    const errors: string[] = [];
+    const toAdd: PendingAttachment[] = [];
+
+    for (const file of files) {
+      const mimeType = file.type || 'text/plain';
+      if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+        errors.push(`"${file.name}" is not a supported file type.`);
+        continue;
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        errors.push(`"${file.name}" exceeds the 3 MB limit.`);
+        continue;
+      }
+      if (pendingAttachments.length + toAdd.length >= MAX_FILES) {
+        errors.push(`Maximum ${MAX_FILES} files per message.`);
+        break;
+      }
+      const entry: PendingAttachment = { id: `${file.name}-${file.size}-${Date.now()}`, file };
+      if (mimeType.startsWith('image/')) {
+        const url = URL.createObjectURL(file);
+        entry.preview = url;
+      }
+      toAdd.push(entry);
+    }
+
+    if (errors.length) setError(errors.join(' '));
+    if (toAdd.length) setPendingAttachments((prev) => [...prev, ...toAdd]);
+  }
+
+  function removeAttachment(id: string) {
+    setPendingAttachments((prev) => {
+      const removed = prev.find((a) => a.id === id);
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((a) => a.id !== id);
+    });
+  }
+
   // Send message and handle streaming response
   async function handleSendMessage() {
     const trimmed = inputValue.trim();
-    if (!trimmed || isStreaming) return;
+    if ((!trimmed && pendingAttachments.length === 0) || isStreaming) return;
 
-    // Clear input immediately
-    setInputValue('');
+    // Snapshot attachments; defer clearing inputs until file reading succeeds
+    const attachmentsSnapshot = [...pendingAttachments];
     setError(null);
     setArtifactMarker(null);
 
-    // Optimistically add user message
+    let attachmentPayloads: AttachmentPayload[];
+    try {
+      attachmentPayloads = await Promise.all(
+        attachmentsSnapshot.map(async (att) => {
+          const mimeType = att.file.type || 'text/plain';
+          const isTextFile = mimeType === 'text/plain' || mimeType === 'text/markdown' || mimeType === 'text/x-markdown';
+          const data = isTextFile ? await readAsText(att.file) : await readAsBase64(att.file);
+          return { name: att.file.name, mimeType, data };
+        })
+      );
+    } catch {
+      setError('Failed to read one or more attached files. Please try again.');
+      return;
+    }
+
+    // Reading succeeded — clear inputs and revoke object URLs
+    setInputValue('');
+    setPendingAttachments([]);
+    attachmentsSnapshot.forEach((a) => { if (a.preview) URL.revokeObjectURL(a.preview); });
+
+    // Optimistically add user message; track attachment names for live-session display
+    const messageIndex = messages.length;
     const userMessage: ChatMessage = {
       role: 'user',
-      content: trimmed,
+      content: trimmed || '(see attached files)',
       timestamp: new Date().toISOString(),
     };
+    if (attachmentsSnapshot.length > 0) {
+      setLiveAttachmentNames((prev) => {
+        const next = new Map(prev);
+        next.set(messageIndex, attachmentsSnapshot.map((a) => a.file.name));
+        return next;
+      });
+    }
     setMessages((prev) => [...prev, userMessage]);
 
     // Start streaming
@@ -502,6 +648,10 @@ export default function SessionChatPage() {
         message: trimmed,
         mode: currentMode,
       };
+
+      if (attachmentPayloads.length > 0) {
+        payload.attachments = attachmentPayloads;
+      }
 
       if (sessionId) {
         payload.sessionId = sessionId;
@@ -953,7 +1103,12 @@ export default function SessionChatPage() {
 
         <div className="space-y-4 max-w-3xl mx-auto">
           {messages.map((msg, i) => (
-            <MessageBubble key={`${msg.role}-${i}`} message={msg} sessionId={sessionId} />
+            <MessageBubble
+              key={`${msg.role}-${i}`}
+              message={msg}
+              sessionId={sessionId}
+              attachmentNames={liveAttachmentNames.get(i)}
+            />
           ))}
 
           {/* Streaming response */}
@@ -983,24 +1138,75 @@ export default function SessionChatPage() {
               </Button>
             </div>
           ) : (
-            <div className="flex gap-2">
-              <Textarea
-                ref={textareaRef}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your message... (Enter to send, Shift+Enter for newline)"
-                rows={2}
-                className="resize-none min-h-[52px]"
-                disabled={isStreaming}
-              />
-              <Button
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isStreaming}
-                className="shrink-0 self-end"
-              >
-                Send
-              </Button>
+            <div className="space-y-2">
+              {/* Attachment preview chips */}
+              {pendingAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {pendingAttachments.map((att) => (
+                    <div
+                      key={att.id}
+                      className="flex items-center gap-1.5 rounded-md border bg-muted px-2 py-1 text-xs"
+                    >
+                      {att.preview ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={att.preview} alt={att.file.name} className="h-5 w-5 rounded object-cover" />
+                      ) : (
+                        <Paperclip className="h-3 w-3 text-muted-foreground" />
+                      )}
+                      <span className="max-w-[160px] truncate">{att.file.name}</span>
+                      <span className="text-muted-foreground">({formatBytes(att.file.size)})</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(att.id)}
+                        className="ml-0.5 text-muted-foreground hover:text-foreground"
+                        aria-label={`Remove ${att.file.name}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf,.md,.txt,.markdown"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <Textarea
+                  ref={textareaRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type your message... (Enter to send, Shift+Enter for newline)"
+                  rows={2}
+                  className="resize-none min-h-[52px]"
+                  disabled={isStreaming}
+                />
+                <div className="flex flex-col gap-2 self-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Attach files"
+                    disabled={pendingAttachments.length >= MAX_FILES}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={(!inputValue.trim() && pendingAttachments.length === 0) || isStreaming}
+                    className="shrink-0"
+                  >
+                    Send
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
           <p className="text-xs text-muted-foreground mt-1.5 text-center">

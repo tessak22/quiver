@@ -6,7 +6,57 @@ import { isValidSkillName } from '@/lib/ai/skills';
 import { createSession, getSession, appendMessage } from '@/lib/db/sessions';
 import { parseJsonBody, safeErrorMessage } from '@/lib/utils';
 import { aiRateLimiter } from '@/lib/rate-limit';
-import type { SessionMode, ArtifactType } from '@/types';
+import type { ContentBlockParam, ImageBlockParam, DocumentBlockParam, TextBlockParam, Base64ImageSource } from '@anthropic-ai/sdk/resources/messages';
+import type { SessionMode, ArtifactType, AttachmentPayload } from '@/types';
+
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+const ALLOWED_TEXT_TYPES = new Set(['text/plain', 'text/markdown', 'text/x-markdown']);
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf',
+  'text/plain', 'text/markdown', 'text/x-markdown',
+]);
+// 3 MB cap: base64 inflates by ~33%, keeping encoded payload well under Vercel's ~4.5 MB limit
+const MAX_ATTACHMENT_SIZE_BYTES = 3 * 1024 * 1024;
+const MAX_ATTACHMENTS = 5;
+
+
+
+/**
+ * Converts client attachment payloads into Anthropic content blocks.
+ * Text/markdown files are prepended as fenced code blocks in the text block.
+ */
+function buildUserContent(messageText: string, attachments: AttachmentPayload[]): string | ContentBlockParam[] {
+  if (!attachments.length) return messageText;
+
+  const blocks: ContentBlockParam[] = [];
+  let textPrefix = '';
+
+  for (const att of attachments) {
+    if (ALLOWED_IMAGE_TYPES.has(att.mimeType)) {
+      const source: Base64ImageSource = {
+        type: 'base64',
+        media_type: att.mimeType as Base64ImageSource['media_type'],
+        data: att.data,
+      };
+      const imageBlock: ImageBlockParam = { type: 'image', source };
+      blocks.push(imageBlock);
+    } else if (att.mimeType === 'application/pdf') {
+      const docBlock: DocumentBlockParam = {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: att.data },
+        title: att.name,
+      };
+      blocks.push(docBlock);
+    } else if (ALLOWED_TEXT_TYPES.has(att.mimeType)) {
+      textPrefix += `[File: ${att.name}]\n\`\`\`\n${att.data}\n\`\`\`\n\n`;
+    }
+  }
+
+  const textBlock: TextBlockParam = { type: 'text', text: textPrefix + messageText };
+  blocks.push(textBlock);
+  return blocks;
+}
 
 /**
  * Persist the user and assistant messages to the session after streaming completes.
@@ -149,17 +199,45 @@ export async function POST(request: Request) {
   const parsed = await parseJsonBody(request);
   if (parsed.error) return parsed.error;
 
-  const { sessionId, message, mode, artifactType, campaignId, extraSkills } = parsed.data as {
+  const { sessionId, message, mode, artifactType, campaignId, extraSkills, attachments } = parsed.data as {
     sessionId?: string;
     message: string;
     mode: SessionMode;
     artifactType?: ArtifactType;
     campaignId?: string;
     extraSkills?: string[];
+    attachments?: AttachmentPayload[];
   };
 
-  if (!message || typeof message !== 'string') {
-    return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+  const validatedAttachments: AttachmentPayload[] = [];
+  if (attachments !== undefined) {
+    if (!Array.isArray(attachments)) {
+      return NextResponse.json({ error: 'attachments must be an array' }, { status: 400 });
+    }
+    if (attachments.length > MAX_ATTACHMENTS) {
+      return NextResponse.json({ error: `Maximum ${MAX_ATTACHMENTS} attachments per message` }, { status: 400 });
+    }
+    for (const att of attachments) {
+      if (typeof att.name !== 'string' || typeof att.mimeType !== 'string' || typeof att.data !== 'string') {
+        return NextResponse.json({ error: 'Invalid attachment format' }, { status: 400 });
+      }
+      if (!ALLOWED_MIME_TYPES.has(att.mimeType)) {
+        return NextResponse.json({ error: `Unsupported file type: ${att.mimeType}` }, { status: 400 });
+      }
+      const isText = ALLOWED_TEXT_TYPES.has(att.mimeType);
+      const byteLength = isText
+        ? Buffer.byteLength(att.data, 'utf8')
+        : Buffer.byteLength(att.data, 'base64');
+      if (byteLength > MAX_ATTACHMENT_SIZE_BYTES) {
+        return NextResponse.json({ error: `Attachment "${att.name}" exceeds 3 MB limit` }, { status: 400 });
+      }
+      validatedAttachments.push(att);
+    }
+  }
+
+  const hasContent = (message && typeof message === 'string') || validatedAttachments.length > 0;
+  if (!hasContent) {
+    return NextResponse.json({ error: 'Message or at least one attachment is required' }, { status: 400 });
   }
 
   // Validate extraSkills at the boundary so malformed names produce a 400
@@ -229,7 +307,7 @@ export async function POST(request: Request) {
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),
-      { role: 'user' as const, content: message },
+      { role: 'user' as const, content: buildUserContent(message ?? '', validatedAttachments) },
     ];
 
     const userTimestamp = new Date().toISOString();
@@ -248,10 +326,12 @@ export async function POST(request: Request) {
     }
 
     // 9. Wrap stream and return response
+    // Persist a readable label when the user sent attachments with no text
+    const persistedMessage = message || validatedAttachments.map((a) => a.name).join(', ');
     const wrappedStream = createSSEStream(
       result.stream,
       currentSessionId!,
-      message,
+      persistedMessage,
       userTimestamp
     );
 

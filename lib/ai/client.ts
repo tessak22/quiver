@@ -18,6 +18,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 
 const MODEL = 'claude-sonnet-4-20250514';
 const MAX_TOKENS = 8192;
@@ -31,7 +32,7 @@ export interface AIError {
 
 interface StreamOptions {
   system: string;
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  messages: MessageParam[];
   maxTokens?: number;
 }
 

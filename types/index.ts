@@ -87,6 +87,13 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+// Attachment sent from client to stream API — ephemeral, never persisted
+export interface AttachmentPayload {
+  name: string;
+  mimeType: string;
+  data: string; // base64 for images/PDFs; plain text for markdown/txt
+}
+
 // Artifact ready marker parsed from AI output
 export interface ArtifactReadyMarker {
   type: ArtifactType;
