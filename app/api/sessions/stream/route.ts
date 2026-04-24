@@ -20,8 +20,7 @@ const ALLOWED_MIME_TYPES = new Set([
 const MAX_ATTACHMENT_SIZE_BYTES = 3 * 1024 * 1024;
 const MAX_ATTACHMENTS = 5;
 
-// Raise Next.js body size limit for attachment payloads (base64-encoded, up to 5 files × 3 MB × 1.33)
-export const config = { api: { bodyParser: { sizeLimit: '25mb' } } };
+
 
 /**
  * Converts client attachment payloads into Anthropic content blocks.

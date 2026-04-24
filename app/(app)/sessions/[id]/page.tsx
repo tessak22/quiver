@@ -491,6 +491,7 @@ export default function SessionChatPage() {
       // Only overwrite messages on initial load — not during/after streaming
       if (isInitialLoad) {
         setMessages(parseMessages(data.session.messages));
+        setLiveAttachmentNames(new Map());
       }
       setSessionId(data.session.id);
     } catch (err) {
