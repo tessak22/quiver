@@ -29,9 +29,9 @@ describe('loadSkills', () => {
   });
 
   it('loads multiple skills separated by dividers', async () => {
-    const result = await loadSkills(['copywriting', 'page-cro']);
+    const result = await loadSkills(['copywriting', 'cro']);
     expect(result).toContain('## Skill: copywriting');
-    expect(result).toContain('## Skill: page-cro');
+    expect(result).toContain('## Skill: cro');
     expect(result).toContain('---');
   });
 
@@ -135,12 +135,13 @@ describe('isValidSkillName (path traversal guard via loadSkills)', () => {
 describe('getSkillNamesForMode', () => {
   it('returns the correct skills for strategy mode', () => {
     const names = getSkillNamesForMode('strategy');
-    expect(names).toContain('product-marketing-context');
+    expect(names).toContain('product-marketing');
     expect(names).toContain('marketing-psychology');
     expect(names).toContain('marketing-ideas');
-    expect(names).toContain('launch-strategy');
-    expect(names).toContain('competitor-alternatives');
-    expect(names).toHaveLength(5);
+    expect(names).toContain('launch');
+    expect(names).toContain('competitors');
+    expect(names).toContain('co-marketing');
+    expect(names).toHaveLength(6);
   });
 
   it('returns the correct skills for feedback mode', () => {
@@ -150,18 +151,18 @@ describe('getSkillNamesForMode', () => {
 
   it('returns the correct skills for analyze mode', () => {
     const names = getSkillNamesForMode('analyze');
-    expect(names).toContain('analytics-tracking');
-    expect(names).toContain('ab-test-setup');
+    expect(names).toContain('analytics');
+    expect(names).toContain('ab-testing');
     expect(names).toHaveLength(2);
   });
 
   it('returns the correct skills for optimize mode', () => {
     const names = getSkillNamesForMode('optimize');
-    expect(names).toContain('page-cro');
+    expect(names).toContain('cro');
     expect(names).toContain('copy-editing');
-    expect(names).toContain('ab-test-setup');
-    expect(names).toContain('signup-flow-cro');
-    expect(names).toContain('onboarding-cro');
+    expect(names).toContain('ab-testing');
+    expect(names).toContain('signup');
+    expect(names).toContain('onboarding');
     expect(names).toHaveLength(5);
   });
 
@@ -172,12 +173,12 @@ describe('getSkillNamesForMode', () => {
 
   it('returns artifact-type-specific skills for create mode', () => {
     const names = getSkillNamesForMode('create', 'email_sequence');
-    expect(names).toEqual(['email-sequence']);
+    expect(names).toEqual(['emails']);
   });
 
   it('returns multiple skills for landing_page artifact type', () => {
     const names = getSkillNamesForMode('create', 'landing_page');
-    expect(names).toEqual(['copywriting', 'page-cro']);
+    expect(names).toEqual(['copywriting', 'cro']);
   });
 
   it('falls back to default create skills for unmapped artifact type', () => {
@@ -189,16 +190,20 @@ describe('getSkillNamesForMode', () => {
   it('maps every defined artifact type to the expected skills', () => {
     const mappings: Array<[ArtifactType, string[]]> = [
       ['copywriting', ['copywriting']],
-      ['email_sequence', ['email-sequence']],
+      ['email_sequence', ['emails']],
       ['cold_email', ['cold-email']],
-      ['social_content', ['social-content']],
+      ['social_content', ['social']],
       ['ad_creative', ['ad-creative']],
-      ['landing_page', ['copywriting', 'page-cro']],
+      ['landing_page', ['copywriting', 'cro']],
       ['one_pager', ['sales-enablement']],
-      ['positioning', ['product-marketing-context']],
-      ['messaging', ['product-marketing-context']],
+      ['positioning', ['product-marketing']],
+      ['messaging', ['product-marketing']],
       ['content_strategy', ['content-strategy']],
-      ['ab_test', ['ab-test-setup']],
+      ['ab_test', ['ab-testing']],
+      ['launch_strategy', ['launch']],
+      ['competitor_analysis', ['competitors', 'competitor-profiling']],
+      ['seo', ['seo-audit', 'ai-seo']],
+      ['cro', ['cro']],
     ];
 
     for (const [artifactType, expectedSkills] of mappings) {
@@ -216,15 +221,15 @@ describe('getSkillNamesForMode', () => {
 describe('loadSkillsForMode', () => {
   it('loads skills for strategy mode from real files', async () => {
     const { content, skillNames } = await loadSkillsForMode('strategy');
-    expect(skillNames).toHaveLength(5);
-    expect(content).toContain('## Skill: product-marketing-context');
+    expect(skillNames).toHaveLength(6);
+    expect(content).toContain('## Skill: product-marketing');
     expect(content).toContain('## Skill: marketing-psychology');
   });
 
   it('loads skills for create mode with artifact type', async () => {
     const { content, skillNames } = await loadSkillsForMode('create', 'email_sequence');
-    expect(skillNames).toEqual(['email-sequence']);
-    expect(content).toContain('## Skill: email-sequence');
+    expect(skillNames).toEqual(['emails']);
+    expect(content).toContain('## Skill: emails');
   });
 
   it('throws when create mode is used without artifact type', async () => {
@@ -242,13 +247,13 @@ describe('loadSkillsForMode', () => {
   it('loads skills for analyze mode', async () => {
     const { content, skillNames } = await loadSkillsForMode('analyze');
     expect(skillNames).toHaveLength(2);
-    expect(content).toContain('## Skill: analytics-tracking');
+    expect(content).toContain('## Skill: analytics');
   });
 
   it('loads skills for optimize mode', async () => {
     const { content, skillNames } = await loadSkillsForMode('optimize');
     expect(skillNames).toHaveLength(5);
-    expect(content).toContain('## Skill: page-cro');
+    expect(content).toContain('## Skill: cro');
   });
 
   // Verify every mode produces non-empty skill content
@@ -282,6 +287,10 @@ describe('loadSkillsForMode', () => {
       'messaging',
       'content_strategy',
       'ab_test',
+      'launch_strategy',
+      'competitor_analysis',
+      'seo',
+      'cro',
     ];
     for (const at of artifactTypes) {
       await loadSkillsForMode('create', at);

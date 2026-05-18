@@ -29,37 +29,42 @@ const skillCache = new Map<string, { content: string; loadedAt: number }>();
 /** Skills loaded per session mode */
 const MODE_SKILLS: Record<SessionMode, string[]> = {
   strategy: [
-    'product-marketing-context',
+    'product-marketing',
     'marketing-psychology',
     'marketing-ideas',
-    'launch-strategy',
-    'competitor-alternatives',
+    'launch',
+    'competitors',
+    'co-marketing',
   ],
   create: [], // Determined by artifact type
   feedback: ['customer-research'],
-  analyze: ['analytics-tracking', 'ab-test-setup'],
+  analyze: ['analytics', 'ab-testing'],
   optimize: [
-    'page-cro',
+    'cro',
     'copy-editing',
-    'ab-test-setup',
-    'signup-flow-cro',
-    'onboarding-cro',
+    'ab-testing',
+    'signup',
+    'onboarding',
   ],
 };
 
 /** Artifact type → skill mapping for create mode */
 const ARTIFACT_TYPE_SKILLS: Partial<Record<ArtifactType, string[]>> = {
   copywriting: ['copywriting'],
-  email_sequence: ['email-sequence'],
+  email_sequence: ['emails'],
   cold_email: ['cold-email'],
-  social_content: ['social-content'],
+  social_content: ['social'],
   ad_creative: ['ad-creative'],
-  landing_page: ['copywriting', 'page-cro'],
+  landing_page: ['copywriting', 'cro'],
   one_pager: ['sales-enablement'],
-  positioning: ['product-marketing-context'],
-  messaging: ['product-marketing-context'],
+  positioning: ['product-marketing'],
+  messaging: ['product-marketing'],
   content_strategy: ['content-strategy'],
-  ab_test: ['ab-test-setup'],
+  ab_test: ['ab-testing'],
+  launch_strategy: ['launch'],
+  competitor_analysis: ['competitors', 'competitor-profiling'],
+  seo: ['seo-audit', 'ai-seo'],
+  cro: ['cro'],
 };
 
 const DEFAULT_CREATE_SKILLS = ['copywriting'];
