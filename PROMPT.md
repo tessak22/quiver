@@ -276,11 +276,11 @@ Clone the skills repo and copy the `/skills` directory into this repo at `/skill
 
 | Mode | Skills to load |
 |---|---|
-| strategy | `vbf-messaging`, `marketing-psychology`, `marketing-ideas`, `launch-strategy`, `competitor-alternatives` |
-| create | Determined by artifact type declared at session start. Map: `copywriting` → copywriting, `email_sequence` → email-sequence, `cold_email` → cold-email, `social_content` → social-content, `ad_creative` → ad-creative, `landing_page` → copywriting + page-cro, `one_pager` → sales-enablement, `positioning` → vbf-messaging, `messaging` → vbf-messaging, `content_strategy` → content-strategy, `ab_test` → ab-test-setup, all others → copywriting |
+| strategy | `product-marketing`, `marketing-psychology`, `marketing-ideas`, `launch`, `competitors`, `co-marketing` |
+| create | Determined by artifact type declared at session start. Map: `copywriting` → copywriting, `email_sequence` → emails, `cold_email` → cold-email, `social_content` → social, `ad_creative` → ad-creative, `landing_page` → copywriting + cro, `one_pager` → sales-enablement, `positioning` → product-marketing, `messaging` → product-marketing, `content_strategy` → content-strategy, `ab_test` → ab-testing, `launch_strategy` → launch, `competitor_analysis` → competitors + competitor-profiling, `seo` → seo-audit + ai-seo, `cro` → cro, all others → copywriting |
 | feedback | `customer-research` |
-| analyze | `analytics-tracking`, `ab-test-setup` |
-| optimize | `page-cro`, `copy-editing`, `ab-test-setup`, `signup-flow-cro`, `onboarding-cro` |
+| analyze | `analytics`, `ab-testing` |
+| optimize | `cro`, `copy-editing`, `ab-testing`, `signup`, `onboarding` |
 
 **Skill update flow (admin only):**
 A settings page action lets an admin pull the latest skills. It runs a server action that fetches the latest commit from `coreyhaines31/marketingskills`, copies the `/skills` directory, and updates `/skills/PINNED_VERSION`. This is a manual admin action, not automatic.
@@ -372,7 +372,7 @@ Detect the `[ARTIFACT READY — type: ... | suggested title: ...]` marker as it 
 
 On first run (no active `context_version` row exists), redirect all routes to `/setup`. The onboarding wizard must be completed before any other part of the app is accessible.
 
-Six steps. Each step uses an AI-assisted input — the user provides rough notes and the AI structures them using the `product-marketing-context` skill framework:
+Six steps. Each step uses an AI-assisted input — the user provides rough notes and the AI structures them using the `product-marketing` skill framework:
 
 ```
 Step 1 — Product basics
