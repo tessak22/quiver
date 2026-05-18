@@ -50,3 +50,4 @@ docs/
 
 # Local Netlify folder
 .netlify
+.worktrees/

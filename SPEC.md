@@ -304,11 +304,11 @@ Supabase-auth-linked member table.
 
 | Mode | Purpose | Skills |
 |---|---|---|
-| Strategy | Positioning, GTM, messaging decisions | `product-marketing-context`, `marketing-psychology`, `marketing-ideas`, `launch-strategy`, `competitor-alternatives` |
+| Strategy | Positioning, GTM, messaging decisions | `product-marketing`, `marketing-psychology`, `marketing-ideas`, `launch`, `competitors`, `co-marketing` |
 | Create | Produce marketing assets | Skill mapping by artifact type |
 | Feedback | Synthesize raw notes/metrics | `customer-research` |
-| Analyze | Analyze results and trends | `analytics-tracking`, `ab-test-setup` |
-| Optimize | CRO and iteration work | `page-cro`, `copy-editing`, `ab-test-setup`, `signup-flow-cro`, `onboarding-cro` |
+| Analyze | Analyze results and trends | `analytics`, `ab-testing` |
+| Optimize | CRO and iteration work | `cro`, `copy-editing`, `ab-testing`, `signup`, `onboarding` |
 
 Prompt assembly order remains:
 1. Role definition

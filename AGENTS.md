@@ -42,24 +42,25 @@ Do not introduce additional dependencies without a clear reason. If a new librar
 
 ## Skill names — authoritative list
 
-The `/skills` directory contains a pinned copy of `coreyhaines31/marketingskills`. Only use skill names that actually exist in this repo.
+The `/skills` directory contains a pinned copy of `coreyhaines31/marketingskills` (v2.0.0). Only use skill names that actually exist in this repo.
 
 - `customer-research` exists and is valid.
-- `vbf-messaging` does not exist and must never be referenced. Use `product-marketing-context` instead.
+- `vbf-messaging` does not exist and must never be referenced. Use `product-marketing` instead.
+- `product-marketing-context` no longer exists — use `product-marketing`.
 
 ### Correct skill-to-mode mapping
 
 | Mode | Skills to load |
 |---|---|
-| `strategy` | `product-marketing-context`, `marketing-psychology`, `marketing-ideas`, `launch-strategy`, `competitor-alternatives` |
+| `strategy` | `product-marketing`, `marketing-psychology`, `marketing-ideas`, `launch`, `competitors`, `co-marketing` |
 | `create` | Determined by artifact type — see mapping in `lib/ai/skills.ts` |
 | `feedback` | `customer-research` |
-| `analyze` | `analytics-tracking`, `ab-test-setup` |
-| `optimize` | `page-cro`, `copy-editing`, `ab-test-setup`, `signup-flow-cro`, `onboarding-cro` |
+| `analyze` | `analytics`, `ab-testing` |
+| `optimize` | `cro`, `copy-editing`, `ab-testing`, `signup`, `onboarding` |
 
-### Valid skill names (complete list from `/skills`)
+### Valid skill names (complete list from `/skills`, v2.0.0)
 
-`ab-test-setup`, `ad-creative`, `ai-seo`, `analytics-tracking`, `churn-prevention`, `cold-email`, `community-marketing`, `competitor-alternatives`, `content-strategy`, `copy-editing`, `copywriting`, `customer-research`, `email-sequence`, `form-cro`, `free-tool-strategy`, `launch-strategy`, `lead-magnets`, `marketing-ideas`, `marketing-psychology`, `onboarding-cro`, `page-cro`, `paid-ads`, `paywall-upgrade-cro`, `popup-cro`, `pricing-strategy`, `product-marketing-context`, `programmatic-seo`, `referral-program`, `revops`, `sales-enablement`, `schema-markup`, `seo-audit`, `signup-flow-cro`, `site-architecture`, `social-content`
+`ab-testing`, `ad-creative`, `ads`, `ai-seo`, `analytics`, `aso`, `churn-prevention`, `co-marketing`, `cold-email`, `community-marketing`, `competitor-profiling`, `competitors`, `content-strategy`, `copy-editing`, `copywriting`, `cro`, `customer-research`, `directory-submissions`, `emails`, `free-tools`, `image`, `launch`, `lead-magnets`, `marketing-ideas`, `marketing-psychology`, `onboarding`, `paywalls`, `popups`, `pricing`, `product-marketing`, `programmatic-seo`, `referrals`, `revops`, `sales-enablement`, `schema`, `seo-audit`, `signup`, `site-architecture`, `social`, `video`
 
 ---
 
