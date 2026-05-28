@@ -25,6 +25,8 @@ export type ArtifactType =
   | 'ab_test'
   | 'landing_page'
   | 'one_pager'
+  | 'sms_campaign'
+  | 'prospect_list'
   | 'other';
 
 // Runtime-usable whitelist of all valid artifact types (mirrors ArtifactType union above)
@@ -32,7 +34,7 @@ export const ARTIFACT_TYPES: ArtifactType[] = [
   'copywriting', 'email_sequence', 'cold_email', 'social_content',
   'launch_strategy', 'content_strategy', 'positioning', 'messaging',
   'ad_creative', 'competitor_analysis', 'seo', 'cro', 'ab_test',
-  'landing_page', 'one_pager', 'other',
+  'landing_page', 'one_pager', 'sms_campaign', 'prospect_list', 'other',
 ];
 
 // Artifact status workflow: Draft → Review → Approved → Live → Archived

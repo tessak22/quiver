@@ -129,8 +129,8 @@ describe('PATCH /api/artifacts/[id] — type validation', () => {
     }
   });
 
-  it('ARTIFACT_TYPES covers all 16 supported types', () => {
-    expect(ARTIFACT_TYPES).toHaveLength(16);
+  it('ARTIFACT_TYPES covers all 18 supported types', () => {
+    expect(ARTIFACT_TYPES).toHaveLength(18);
   });
 });
 

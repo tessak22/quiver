@@ -65,6 +65,8 @@ const ARTIFACT_TYPE_SKILLS: Partial<Record<ArtifactType, string[]>> = {
   competitor_analysis: ['competitors', 'competitor-profiling'],
   seo: ['seo-audit', 'ai-seo'],
   cro: ['cro'],
+  sms_campaign: ['sms'],
+  prospect_list: ['prospecting'],
 };
 
 const DEFAULT_CREATE_SKILLS = ['copywriting'];

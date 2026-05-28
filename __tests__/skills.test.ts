@@ -204,6 +204,8 @@ describe('getSkillNamesForMode', () => {
       ['competitor_analysis', ['competitors', 'competitor-profiling']],
       ['seo', ['seo-audit', 'ai-seo']],
       ['cro', ['cro']],
+      ['sms_campaign', ['sms']],
+      ['prospect_list', ['prospecting']],
     ];
 
     for (const [artifactType, expectedSkills] of mappings) {
@@ -291,6 +293,8 @@ describe('loadSkillsForMode', () => {
       'competitor_analysis',
       'seo',
       'cro',
+      'sms_campaign',
+      'prospect_list',
     ];
     for (const at of artifactTypes) {
       await loadSkillsForMode('create', at);
