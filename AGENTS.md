@@ -42,7 +42,7 @@ Do not introduce additional dependencies without a clear reason. If a new librar
 
 ## Skill names — authoritative list
 
-The `/skills` directory contains a pinned copy of `coreyhaines31/marketingskills` (v2.0.0). Only use skill names that actually exist in this repo.
+The `/skills` directory contains a pinned copy of `coreyhaines31/marketingskills` (v2.2.0). Only use skill names that actually exist in this repo.
 
 - `customer-research` exists and is valid.
 - `vbf-messaging` does not exist and must never be referenced. Use `product-marketing` instead.
@@ -58,9 +58,9 @@ The `/skills` directory contains a pinned copy of `coreyhaines31/marketingskills
 | `analyze` | `analytics`, `ab-testing` |
 | `optimize` | `cro`, `copy-editing`, `ab-testing`, `signup`, `onboarding` |
 
-### Valid skill names (complete list from `/skills`, v2.0.0)
+### Valid skill names (complete list from `/skills`, v2.2.0)
 
-`ab-testing`, `ad-creative`, `ads`, `ai-seo`, `analytics`, `aso`, `churn-prevention`, `co-marketing`, `cold-email`, `community-marketing`, `competitor-profiling`, `competitors`, `content-strategy`, `copy-editing`, `copywriting`, `cro`, `customer-research`, `directory-submissions`, `emails`, `free-tools`, `image`, `launch`, `lead-magnets`, `marketing-ideas`, `marketing-psychology`, `onboarding`, `paywalls`, `popups`, `pricing`, `product-marketing`, `programmatic-seo`, `referrals`, `revops`, `sales-enablement`, `schema`, `seo-audit`, `signup`, `site-architecture`, `social`, `video`
+`ab-testing`, `ad-creative`, `ads`, `ai-seo`, `analytics`, `aso`, `churn-prevention`, `co-marketing`, `cold-email`, `community-marketing`, `competitor-profiling`, `competitors`, `content-strategy`, `copy-editing`, `copywriting`, `cro`, `customer-research`, `directory-submissions`, `emails`, `free-tools`, `image`, `launch`, `lead-magnets`, `marketing-ideas`, `marketing-psychology`, `onboarding`, `paywalls`, `popups`, `pricing`, `product-marketing`, `programmatic-seo`, `prospecting`, `referrals`, `revops`, `sales-enablement`, `schema`, `seo-audit`, `signup`, `site-architecture`, `sms`, `social`, `video`
 
 ---
 
