@@ -59,6 +59,7 @@ model Campaign {
   performanceLogs PerformanceLog[]
   researchEntries ResearchEntry[]
   contentPieces   ContentPiece[]
+  tasks           Task[]
 
   @@index([status])
   @@map("campaigns")
@@ -108,6 +109,7 @@ model Artifact {
   childArtifacts  Artifact[]       @relation("ArtifactVersions")
   performanceLogs PerformanceLog[]
   contentPieces   ContentPiece[]
+  tasks           Task[]
 
   @@map("artifacts")
 }
@@ -244,6 +246,7 @@ model ContentPiece {
   contextVersion  ContextVersion?         @relation(fields: [contextVersionId], references: [id])
   distributions   ContentDistribution[]
   metricSnapshots ContentMetricSnapshot[]
+  tasks           Task[]
 
   @@index([status])
   @@map("content_pieces")
@@ -310,4 +313,29 @@ model InstalledSkill {
   @@index([isEnabled])
   @@index([name])
   @@map("installed_skills")
+}
+
+// --- Tasks / To-dos ---
+
+model Task {
+  id             String    @id @default(uuid())
+  title          String
+  description    String?
+  status         String    @default("todo") // proposed | todo | in_progress | blocked | done | approved
+  priority       String    @default("medium") // low | medium | high
+  dueDate        DateTime?
+  assignee       String?
+  createdBy      String    @default("human") // human | agent
+  campaignId     String?
+  contentPieceId String?
+  artifactId     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  campaign     Campaign?     @relation(fields: [campaignId], references: [id])
+  contentPiece ContentPiece? @relation(fields: [contentPieceId], references: [id])
+  artifact     Artifact?     @relation(fields: [artifactId], references: [id])
+
+  @@index([status])
+  @@map("tasks")
 }

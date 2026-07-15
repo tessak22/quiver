@@ -294,3 +294,53 @@ export interface NotificationPrefs {
   context_proposal?: boolean;
   artifact_live?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Tasks / To-dos
+// ---------------------------------------------------------------------------
+
+// Task status workflow.
+//   proposed     — agent-created, awaiting human approval into the queue
+//   todo         — approved and queued (human-only entry point from proposed)
+//   in_progress  — actively being worked
+//   blocked      — stalled on a dependency
+//   done         — finished, deliverable attached
+//   approved     — human-signed-off (human-only terminal state)
+export const TASK_STATUSES = [
+  'proposed',
+  'todo',
+  'in_progress',
+  'blocked',
+  'done',
+  'approved',
+] as const;
+export type TaskStatus = typeof TASK_STATUSES[number];
+
+export const TASK_PRIORITIES = ['low', 'medium', 'high'] as const;
+export type TaskPriority = typeof TASK_PRIORITIES[number];
+
+export const TASK_CREATORS = ['human', 'agent'] as const;
+export type TaskCreator = typeof TASK_CREATORS[number];
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  proposed: 'Proposed',
+  todo: 'To Do',
+  in_progress: 'In Progress',
+  blocked: 'Blocked',
+  done: 'Done',
+  approved: 'Approved',
+};
+
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+};
+
+export function isTaskStatus(value: unknown): value is TaskStatus {
+  return isValueOf(value, TASK_STATUSES);
+}
+
+export function isTaskPriority(value: unknown): value is TaskPriority {
+  return isValueOf(value, TASK_PRIORITIES);
+}
