@@ -25,6 +25,7 @@ import type { TaskStatus, TaskPriority, TaskCreator } from '@/types';
 interface TaskFilters {
   status?: TaskStatus;
   campaignId?: string;
+  limit?: number;
 }
 
 export interface CreateTaskInput {
@@ -63,6 +64,7 @@ export async function getTasks(filters?: TaskFilters) {
       campaignId: filters?.campaignId,
     },
     orderBy: { updatedAt: 'desc' },
+    take: filters?.limit ?? 500,
   });
 }
 

@@ -28,6 +28,8 @@ import {
   TASK_STATUS_LABELS,
   TASK_PRIORITIES,
   TASK_PRIORITY_LABELS,
+  isTaskStatus,
+  isTaskPriority,
 } from '@/types';
 import type { TaskStatus, TaskPriority } from '@/types';
 
@@ -109,7 +111,8 @@ function TaskCard({
   onApprove: (id: string) => void;
   busy: boolean;
 }) {
-  const status = task.status as TaskStatus;
+  const status: TaskStatus = isTaskStatus(task.status) ? task.status : 'todo';
+  const priority: TaskPriority = isTaskPriority(task.priority) ? task.priority : 'medium';
 
   return (
     <Card className="transition-colors hover:bg-muted/50">
@@ -120,9 +123,9 @@ function TaskCard({
           >
             {TASK_STATUS_LABELS[status]}
           </span>
-          {task.priority !== 'medium' && (
+          {priority !== 'medium' && (
             <Badge variant="outline" className="text-xs">
-              {TASK_PRIORITY_LABELS[task.priority as TaskPriority]}
+              {TASK_PRIORITY_LABELS[priority]}
             </Badge>
           )}
           {task.createdBy === 'agent' && (

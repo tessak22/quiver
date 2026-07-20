@@ -142,6 +142,13 @@ export function registerTaskTools(server: McpServer) {
           return error(`No task found with ID '${task_id}'.`);
         }
 
+        if (existing.status === 'proposed') {
+          return error('This task is still proposed and not yet approved into the queue. A human must promote it (proposed -> todo) from the dashboard before an agent can work it.');
+        }
+        if (existing.status === 'approved') {
+          return error('This task is approved (signed off) and is human-only. An agent cannot reopen it.');
+        }
+
         // Enforce human-only approval gates.
         if (status !== undefined) {
           if (status === 'approved') {
@@ -199,6 +206,13 @@ export function registerTaskTools(server: McpServer) {
         const existing = await getTask(task_id);
         if (!existing) {
           return error(`No task found with ID '${task_id}'.`);
+        }
+
+        if (existing.status === 'proposed') {
+          return error('This task is still proposed and not yet approved into the queue. A human must promote it (proposed -> todo) from the dashboard before an agent can work it.');
+        }
+        if (existing.status === 'approved') {
+          return error('This task is approved (signed off) and is human-only. An agent cannot reopen it.');
         }
 
         const contentPieceId = content_piece_id ?? existing.contentPieceId;

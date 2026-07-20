@@ -5,6 +5,18 @@ import { getTask, updateTask, deleteTask } from '@/lib/db/tasks';
 import { TASK_STATUSES, TASK_PRIORITIES } from '@/types';
 import type { TaskStatus, TaskPriority } from '@/types';
 
+// Valid human status transitions: from -> allowed next states.
+// Permissive-but-structured; keeps the dashboard's promote (proposed -> todo)
+// and approve (done -> approved) working.
+const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
+  proposed:    ['todo'],
+  todo:        ['in_progress', 'blocked', 'done'],
+  in_progress: ['todo', 'blocked', 'done'],
+  blocked:     ['todo', 'in_progress', 'done'],
+  done:        ['approved', 'todo', 'in_progress'],
+  approved:    ['todo', 'in_progress'],
+};
+
 export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
@@ -50,10 +62,24 @@ export async function PATCH(
       body.title = body.title.trim();
     }
 
-    // The API (human) may perform any status transition, including the
-    // human-only gates proposed -> todo and done -> approved.
-    if (body.status !== undefined && !TASK_STATUSES.includes(body.status as TaskStatus)) {
-      return NextResponse.json({ error: 'Invalid task status' }, { status: 400 });
+    // The API (human) may perform any status transition allowed by the
+    // transition graph, including the human-only gates proposed -> todo and
+    // done -> approved. A same-status no-op is not treated as a transition.
+    if (body.status !== undefined) {
+      if (!TASK_STATUSES.includes(body.status as TaskStatus)) {
+        return NextResponse.json({ error: 'Invalid task status' }, { status: 400 });
+      }
+
+      const currentStatus = existing.status as TaskStatus;
+      const allowedTransitions = TASK_STATUS_TRANSITIONS[currentStatus];
+      if (body.status !== currentStatus && !allowedTransitions.includes(body.status as TaskStatus)) {
+        return NextResponse.json(
+          {
+            error: `Cannot transition from "${currentStatus}" to "${body.status}". Allowed: ${allowedTransitions.join(', ') || 'none'}`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate priority if provided
