@@ -23,6 +23,7 @@ import { registerPerformanceTools } from './tools/performance.js';
 import { registerWorkspaceTools } from './tools/workspace.js';
 import { registerResearchTools } from './tools/research.js';
 import { registerContentTools } from './tools/content.js';
+import { registerTaskTools } from './tools/tasks.js';
 
 const server = new McpServer({
   name: 'quiver',
@@ -38,6 +39,7 @@ registerPerformanceTools(server);
 registerWorkspaceTools(server);
 registerResearchTools(server);
 registerContentTools(server);
+registerTaskTools(server);
 
 // Start stdio transport
 const transport = new StdioServerTransport();
