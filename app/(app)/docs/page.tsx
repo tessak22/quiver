@@ -163,9 +163,6 @@ export default function DocsPage() {
 GET ${APP_URL}/api/public/content`}</CodeBlock>
             </div>
 
-            <p className="text-sm text-muted-foreground">
-              Tabstack URL import is specified in Issue #50 and is planned, but not implemented in this checkout.
-            </p>
           </section>
 
           <section id="customer-research" className="scroll-mt-20 space-y-3">

@@ -549,21 +549,6 @@ Implemented.
 
 ---
 
-## Tabstack content import (Issue #50)
-
-Status in this checkout: **issued but not implemented yet**.
-
-Planned design:
-- Optional `TABSTACK_API_KEY` env var
-- Shared client wrapper `lib/tabstack.ts`
-- `POST /api/content/import` using Tabstack `/extract/json`
-- Import modal in content library
-- Graceful degradation when key is absent
-
-Until implemented, docs should treat this as planned scope and not shipped behavior.
-
----
-
 ## Navigation and UX principles
 
 ### Core workspace navigation (8 primary work areas)
@@ -601,7 +586,6 @@ Build and validation order by dependency:
 | 4 | Dark mode (Issue #45) | UX improvement, no schema impact |
 | 5 | Research layer (Issue #47) | Depends on campaigns/context/performance |
 | 6 | Content layer (Issue #49) | Depends on campaigns/context + public API |
-| 7 | Tabstack import (Issue #50) | Optional add-on to content workflow |
 | 8 | Scheduled sync (Issue #39, Phase 3) | Defer until MCP-first workflow proven in production |
 
 ---
@@ -640,7 +624,6 @@ QUIVER_SHARE_SECRET=
 MCP_AUTH_SECRET=
 
 # Optional planned content import (Issue #50, not yet implemented in this checkout)
-TABSTACK_API_KEY=
 ```
 
 ---

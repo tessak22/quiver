@@ -133,15 +133,6 @@ Do not pause for: UI components, API routes, lib utilities, types, bug fixes, de
 - `ThemeToggle` toggles the `dark` class on `<html>` and writes `'dark' | 'light'` to localStorage.
 - `app/layout.tsx` includes an inline pre-hydration script that applies the `dark` class before React hydration to prevent theme flash.
 
-### Tabstack import status (issue #50)
-
-- Issue #50 is planned/issued work, not currently implemented in this repository state.
-- There is currently no `lib/tabstack.ts` module.
-- There is currently no `/api/content/import` route.
-- There is currently no MCP content import tool for Tabstack.
-
----
-
 ## MCP server quick reference
 
 - Tool groups registered in both stdio and HTTP MCP servers: context, campaign, artifact, session, performance, workspace, research, content.
