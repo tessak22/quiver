@@ -13,10 +13,32 @@ vi.mock('@neondatabase/serverless', () => ({
 }));
 
 // Supabase PostgREST chain: from().select().eq().limit() resolves to { data, error }.
+//
+// Every step records its arguments. Ignoring them made the suite blind to the
+// one mistake that would hurt most: `context_versions.isActive` is a quoted,
+// mixed-case column, and querying `isactive` instead returns nothing forever,
+// which silently traps every fresh install in onboarding. With the arguments
+// thrown away, that change still passed all ten tests.
+const fromMock = vi.fn();
+const selectMock = vi.fn();
+const eqMock = vi.fn();
 const limitMock = vi.fn();
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({
-    from: () => ({ select: () => ({ eq: () => ({ limit: limitMock }) }) }),
+    from: (...fromArgs: unknown[]) => {
+      fromMock(...fromArgs);
+      return {
+        select: (...selectArgs: unknown[]) => {
+          selectMock(...selectArgs);
+          return {
+            eq: (...eqArgs: unknown[]) => {
+              eqMock(...eqArgs);
+              return { limit: limitMock };
+            },
+          };
+        },
+      };
+    },
   })),
 }));
 
@@ -26,6 +48,9 @@ import { isTeamMember, hasActiveContext } from '@/lib/middleware-db';
 beforeEach(() => {
   sqlMock.mockReset();
   limitMock.mockReset();
+  fromMock.mockReset();
+  selectMock.mockReset();
+  eqMock.mockReset();
   process.env.DATABASE_URL = 'postgres://user:pw@ep-test.us-east-2.aws.neon.tech/db';
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-test';
@@ -74,6 +99,18 @@ describe('non-Neon DATABASE_URL (Supabase PostgREST)', () => {
     limitMock.mockResolvedValueOnce({ data: [{ id: 'u1' }], error: null });
     await expect(isTeamMember('u1')).resolves.toBe(true);
     expect(sqlMock).not.toHaveBeenCalled();
+    expect(fromMock).toHaveBeenCalledWith('team_members');
+    expect(eqMock).toHaveBeenCalledWith('id', 'u1');
+  });
+
+  it('hasActiveContext asks for the column the database actually has', async () => {
+    // `isActive` is quoted and mixed-case in Postgres. Asking for `isactive`
+    // would return nothing, forever, on every Supabase install.
+    limitMock.mockResolvedValueOnce({ data: [{ id: 'c1' }], error: null });
+    await expect(hasActiveContext()).resolves.toEqual({ exists: true, failed: false });
+    expect(fromMock).toHaveBeenCalledWith('context_versions');
+    expect(eqMock).toHaveBeenCalledWith('isActive', true);
+    expect(selectMock).toHaveBeenCalledWith('id');
   });
 
   it('isTeamMember fails closed on a PostgREST error', async () => {
