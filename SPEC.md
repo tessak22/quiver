@@ -523,11 +523,11 @@ Claude Desktop / Cursor use the built `mcp/dist/index.js` command.
 
 Remote HTTP connector uses deployed endpoint:
 - `https://<your-domain>/api/mcp`
-- Optional `MCP_AUTH_SECRET` Bearer token for auth.
+- `MCP_AUTH_SECRET` Bearer token. Required in production: without it the endpoint refuses every request outside local development.
 
 ---
 
-## Scheduled sync strategy (Issue #39, reframed)
+## Scheduled sync strategy
 
 MCP-first remains the primary path for external metric pulls.
 
@@ -546,21 +546,6 @@ Implemented.
 - Tailwind config uses class mode (`darkMode: ['class']`)
 - Inline script in `app/layout.tsx` runs before hydration to avoid flash of incorrect theme
 - `ThemeToggle` appears in app shell header
-
----
-
-## Tabstack content import (Issue #50)
-
-Status in this checkout: **issued but not implemented yet**.
-
-Planned design:
-- Optional `TABSTACK_API_KEY` env var
-- Shared client wrapper `lib/tabstack.ts`
-- `POST /api/content/import` using Tabstack `/extract/json`
-- Import modal in content library
-- Graceful degradation when key is absent
-
-Until implemented, docs should treat this as planned scope and not shipped behavior.
 
 ---
 
@@ -601,8 +586,7 @@ Build and validation order by dependency:
 | 4 | Dark mode (Issue #45) | UX improvement, no schema impact |
 | 5 | Research layer (Issue #47) | Depends on campaigns/context/performance |
 | 6 | Content layer (Issue #49) | Depends on campaigns/context + public API |
-| 7 | Tabstack import (Issue #50) | Optional add-on to content workflow |
-| 8 | Scheduled sync (Issue #39, Phase 3) | Defer until MCP-first workflow proven in production |
+| 8 | Scheduled sync | Defer until MCP-first workflow proven in production |
 
 ---
 
@@ -636,11 +620,11 @@ ANTHROPIC_API_KEY=
 NEXT_PUBLIC_APP_URL=
 QUIVER_SHARE_SECRET=
 
-# Optional MCP HTTP auth
+# Required in production: /api/mcp refuses everything without it
 MCP_AUTH_SECRET=
 
-# Optional planned content import (Issue #50, not yet implemented in this checkout)
-TABSTACK_API_KEY=
+# Required in production: Vercel sends this to /api/cron/pattern-report
+CRON_SECRET=
 ```
 
 ---

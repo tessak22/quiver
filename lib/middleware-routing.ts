@@ -14,7 +14,17 @@
 // (Claude Code `.mcp.json`, browser connectors, etc.). It runs its own
 // Bearer-token auth via MCP_AUTH_SECRET, so it must bypass the Supabase
 // session gate — otherwise unauthenticated MCP requests get 307'd to /login.
-export const PUBLIC_ROUTES = ['/login', '/invite', '/shared', '/api/public', '/api/mcp'];
+// `/api/auth/bootstrap` creates the first account on a fresh install, and
+// closes itself the moment one exists — it has to be reachable before
+// anyone can sign in, because signing in is the thing it makes possible.
+export const PUBLIC_ROUTES = [
+  '/login',
+  '/invite',
+  '/shared',
+  '/api/public',
+  '/api/mcp',
+  '/api/auth/bootstrap',
+];
 
 /** Routes that require auth but NOT team membership (pre-membership flows) */
 export const MEMBERSHIP_EXEMPT_ROUTES = [

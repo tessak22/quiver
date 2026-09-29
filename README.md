@@ -1,102 +1,106 @@
 # Quiver
 
-Quiver is a developer marketing system. It keeps product context, customer evidence, campaigns, content, tasks, distribution and performance connected, so every AI session starts from your team's approved positioning, ICP, messaging and past results instead of a blank prompt.
+**Finally, marketing that makes sense to engineers.**
 
-This repository is the **self-hosted edition**, MIT licensed. There is also a [hosted version at quivergtm.dev](https://www.quivergtm.dev) if you would rather not run it yourself.
+Quiver is an open-source, self-hosted **agentic developer marketing system** for technical founders and teams building developer tools. It connects product context, customer research, campaigns, content, and results, so the next piece of work starts with what your team knows—not another empty chat. Work in the web app or through MCP-compatible clients; keep the history and decisions in Quiver.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET,CRON_SECRET,MCP_AUTH_SECRET)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
+**Choose your path:** [Self-host this repository](#self-hosting) · [Use hosted Quiver](https://www.quivergtm.dev/) · [Contribute](CONTRIBUTING.md)
 
-## Feature Overview
+## The problem isn't another draft
 
-Quiver includes:
+Your positioning lives in one document. Customer objections are buried in call notes. Campaign work happens in a chat; published content lives somewhere else; results rarely make it back into the next brief. A capable agent can still produce the wrong work when it cannot see the decisions behind it.
 
-- **Marketing context system** with version history and proposal review workflow
-- **Five AI session modes** (Strategy, Create, Feedback, Analyze, Optimize) with skill loading
-- **Artifact library** with versioning, status workflow, and campaign linking
-- **Campaign workspace** tying sessions, artifacts, content, research, and performance together
-- **Performance log** with close-the-loop queue and context update proposals
-- **Content layer** with markdown body, SEO/OG metadata, distribution tracking, and metric snapshots
-- **Customer research layer** with async AI processing, quote extraction, and VoC quote library
-- **MCP server access** over stdio (`mcp/`) and HTTP (`/api/mcp`) for external AI clients
-- **Public Content API** for website pulls from Quiver as source of truth
-- **Light/dark mode** with persisted user preference
+Quiver gives that work a system of record. Product context has versions. Research can inform campaigns. Sessions produce artifacts you can review and revise. Published content and performance stay linked to the work that produced them. When results suggest a change in direction, the team can review a proposed context update rather than silently rewriting its source of truth.
 
----
+### A concrete loop
 
-## Self-Hosting (30 minutes)
+Say you're marketing a new developer API:
 
-1. **Fork** this repo
-2. **Create a [Supabase](https://supabase.com) project**
-3. **Get an [Anthropic API key](https://console.anthropic.com/settings/keys)**
-4. **Deploy to Vercel** with the button above
-5. **Run Prisma migration** against your database:
+1. **Set the context.** Record the product, audience, positioning, messaging, and hypotheses in onboarding. Quiver keeps versions as that context changes.
+2. **Capture evidence.** Save customer research and feature the quotes worth carrying into future strategy and creation sessions.
+3. **Run the campaign.** Use Strategy to plan and Create to draft content. Save the outputs as versioned artifacts linked to a campaign; move them through review before calling them live.
+4. **Ship and learn.** Track content and where it was distributed, log results against the campaign or artifact, and review proposed context changes before the next round.
+
+The web UI runs Quiver's five AI session modes. MCP clients can work with the same context, campaigns, artifacts, research, content, and performance records after initial setup in the web UI. Quiver organizes the work; it does not replace your judgment, your publishing destination, your CRM, or your analytics tools.
+
+## What's in the self-hosted edition
+
+| Part | What it lets you do |
+|---|---|
+| Product context | Keep approved positioning, ICP, messaging, evidence, and hypotheses in versioned context; review proposals and restore earlier versions. |
+| Sessions & skills | Use Strategy, Create, Feedback, Analyze, or Optimize modes with skills loaded for the task and product context available to each session. |
+| Campaigns & artifacts | Group sessions, research, content, artifacts, and results around an initiative. Save revisions and move artifacts through explicit statuses. |
+| Customer research | Save research entries, extract and feature customer quotes, and capture signals against active hypotheses. |
+| Content | Store markdown with SEO/OG metadata; track distributions and dated metric snapshots. Make *published* pieces available to your site through the [public Content API](#public-content-api). |
+| Performance | Log metrics and qualitative results; review the close-the-loop queue and proposed context updates. |
+| MCP | Use Quiver from an external agent with the [local stdio server or remote HTTP endpoint](#mcp-server). |
+
+Quiver is **not** an AI copy generator with a folder bolted on. Its value is keeping the source material, the work, its state, and what happened afterward connected. It also isn't a turnkey autopublisher: the Content API makes published records available for your site to fetch and render.
+
+## Self-hosting
+
+This repository is the **MIT-licensed, single-team deployment**. You operate the app, database, and Anthropic account. If you'd rather have a managed, shared team workspace without maintaining the infrastructure, [use hosted Quiver](https://www.quivergtm.dev/) instead; its packaging and features are separate from this repository.
+
+You'll need a [Supabase](https://supabase.com) project (Postgres and Auth), an [Anthropic API key](https://console.anthropic.com/settings/keys), and a Vercel project. The deploy button creates a deployment, but **you still need to configure the services and run the database migrations**.
+
+1. Fork this repository. Create a Supabase project and collect its connection strings, project URL, and API keys.
+2. Generate a share-link secret with `openssl rand -base64 32`. Set the [environment variables](#environment-variables) on your Vercel project; configure Supabase Auth for your deployment URL.
+3. Use the **Deploy with Vercel** button above, or import your fork into Vercel. Set `NEXT_PUBLIC_APP_URL` to your actual deployment URL.
+4. From your checked-out fork with `DATABASE_URL` and `DIRECT_URL` configured, apply the schema:
    ```bash
    npx prisma migrate deploy
    ```
-6. **Visit your deployment URL** and complete onboarding
+5. Open the deployment. A fresh install offers **Create the first account** on the login screen — that account becomes the admin. Complete onboarding to create the first product-context version.
 
----
+For local development, see [CONTRIBUTING.md](CONTRIBUTING.md). Don't commit `.env.local` or expose the Supabase service-role key in client-side code.
 
-## Environment Variables
+### Environment variables
 
-Copy `.env.example` to `.env.local` and fill in values:
+Copy [`.env.example`](.env.example) to `.env.local` for local work, or set the same keys in Vercel. The example file explains where to obtain each value.
 
-| Variable | Required | Notes |
+| Variable | Required | Purpose |
 |---|---|---|
-| `DATABASE_URL` | Yes | Postgres connection string (pooled) |
-| `DIRECT_URL` | Yes | Direct DB connection for Prisma migrations |
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-only Supabase service role key |
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key |
-| `NEXT_PUBLIC_APP_URL` | Yes | App URL (`https://...` or `http://localhost:3000`) |
-| `QUIVER_SHARE_SECRET` | Yes | Secret for session share links (`openssl rand -base64 32`) |
-| `MCP_AUTH_SECRET` | No | Optional Bearer auth for `/api/mcp` |
+| `DATABASE_URL` | Yes | Pooled Postgres connection string for the app. |
+| `DIRECT_URL` | Yes | Direct Postgres connection for Prisma migrations. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase public/anon key. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-only service-role key. Never expose it to clients. |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for the app's AI features. |
+| `NEXT_PUBLIC_APP_URL` | Yes | Your app URL, e.g. `https://your-domain.example`. |
+| `QUIVER_SHARE_SECRET` | Yes | Secret for session share links; generate it yourself. |
+| `MCP_AUTH_SECRET` | Yes in production | Bearer token for `/api/mcp`. Without it, that endpoint refuses every request outside local development — it exposes writes and deletes. |
+| `CRON_SECRET` | Yes in production | Bearer token Vercel sends to `/api/cron/pattern-report`. Without it the job returns 200 and does nothing, so the monthly pattern report never runs. |
 
----
+## Public Content API
 
-## Content API
-
-Published content is available from Quiver via a public, unauthenticated API:
+Your site can fetch published content from Quiver as JSON, then render it however you want:
 
 ```txt
-GET /api/public/content/[slug]   # single published piece with markdown body + SEO/OG
+GET /api/public/content/[slug]   # one published piece, including markdown and SEO/OG fields
 GET /api/public/content          # paginated list of published pieces
 ```
 
-Query params for list endpoint:
+The list accepts `contentType`, `limit` (default `20`, max `50`), and `offset` (default `0`). Both endpoints are public and rate-limited to 60 requests/minute per IP, using an in-memory limiter per app instance. Drafts are not returned. See [`app/api/public/content`](app/api/public/content) for the implementation.
 
-- `contentType` (optional)
-- `limit` (default `20`, max `50`)
-- `offset` (default `0`)
+## MCP server
 
-Both endpoints are rate-limited to `60` requests/minute per IP (in-memory limiter per app instance).
+Quiver exposes its context, campaigns, artifacts, content, research, and performance as tools. Connect an MCP-compatible client to work with the same records without opening the web UI—for example, save research after a call or log campaign results from an agent that also has access to your analytics tools. Those external data pulls depend on the integrations **your client** has; Quiver does not automatically connect to them.
 
-Use this API at build time or runtime in your website. Quiver stays the source of truth.
+### Local stdio server
 
----
-
-## MCP Server
-
-Quiver ships with an MCP server that exposes the full product surface as tools for Claude Desktop, Cursor, Windsurf, and other MCP-compatible clients.
-
-### Why this matters
-
-A better-informed Claude instance (project memory + connected services + Quiver MCP tools) can log performance, save research, update context, and manage content directly, while Quiver remains the storage and tracking system.
-
-### Build (stdio server)
+Build the server from the repository root:
 
 ```bash
+npm install          # repository root first
 cd mcp
 npm install
-npx prisma generate
-npm run build
+npm run build        # runs prisma generate itself
 ```
 
-### Claude Desktop config (stdio)
+Point Claude Desktop, Cursor, or another stdio MCP client at the absolute path to `mcp/dist/index.js` and supply the database connection string. Example configuration:
 
 ```json
 {
@@ -105,151 +109,29 @@ npm run build
       "command": "node",
       "args": ["/absolute/path/to/quiver/mcp/dist/index.js"],
       "env": {
-        "DATABASE_URL": "your-supabase-connection-string"
+        "DATABASE_URL": "your-postgres-connection-string"
       }
     }
   }
 }
 ```
 
-> **Note:** `ANTHROPIC_API_KEY` is optional for the stdio server. The only tool that uses it is `log_performance` — it runs AI synthesis after logging results to propose context updates. Without the key, `log_performance` still works but skips synthesis.
+`ANTHROPIC_API_KEY` is optional for this stdio server. Without it, `log_performance` still stores results but skips AI synthesis.
 
-### Cursor config (stdio)
+### Remote HTTP endpoint
 
-```json
-{
-  "mcpServers": {
-    "quiver": {
-      "command": "node",
-      "args": ["/absolute/path/to/quiver/mcp/dist/index.js"],
-      "env": {
-        "DATABASE_URL": "your-supabase-connection-string"
-      }
-    }
-  }
-}
-```
+The Next.js app exposes Streamable HTTP at `https://<your-domain>/api/mcp`. **Set `MCP_AUTH_SECRET` before deploying.** Without it the endpoint refuses every request outside local development, because it exposes tools that write and delete data. Clients then send `Authorization: Bearer <your-secret>`. Treat the secret and database connection string as credentials.
 
-### Remote HTTP connector (`/api/mcp`)
+The tools are grouped by context, campaigns, artifacts, performance, content, research, sessions, and workspace; see [`mcp/tools`](mcp/tools) for the exact list. `propose_context_update` queues a change for review. `apply_context_update` changes the active context immediately and creates a version: use it only when a human explicitly directs the change. MCP access is powerful; connect only clients you trust.
 
-Quiver also includes a Streamable HTTP MCP endpoint in the Next.js app:
+## How sessions use context
 
-```txt
-https://<your-domain>/api/mcp
-```
+Each session assembles its prompt from the active product context, skills for the selected mode, and task-specific evidence. Create can include recent performance for that artifact type; Create and Strategy can include featured research quotes and recent published content. See [`lib/ai/session.ts`](lib/ai/session.ts) and [`lib/ai/skills.ts`](lib/ai/skills.ts). The pinned marketing skills live in [`/skills`](skills) with [upstream attribution](https://github.com/coreyhaines31/marketingskills); they are not fetched on every request.
 
-- Set `MCP_AUTH_SECRET` to require `Authorization: Bearer <secret>`
-- Without `MCP_AUTH_SECRET`, endpoint allows requests (safe only for private/internal deployments)
+## Built with
 
-### Tool domains
+Next.js 14 · TypeScript · Tailwind CSS and shadcn/ui · Supabase/Postgres · Prisma · Anthropic SDK · Vitest · Vercel
 
-Context:
-- `get_context`, `get_context_history`, `propose_context_update`, `apply_context_update`, `restore_context_version`
+## Contributing & license
 
-Campaigns:
-- `list_campaigns`, `get_campaign`, `create_campaign`, `update_campaign`, `update_campaign_status`
-
-Artifacts:
-- `list_artifacts`, `get_artifact`, `save_artifact`, `update_artifact`, `update_artifact_status`
-
-Performance:
-- `log_performance`, `get_performance_log`, `get_close_the_loop_queue`, `list_proposals`, `action_proposal`
-
-Content:
-- `list_content`, `get_content`, `save_content`, `update_content`, `add_distribution`, `log_content_metrics`, `get_content_metrics`, `get_content_calendar`
-
-Research:
-- `list_research_entries`, `get_research_entry`, `save_research_entry`, `list_quotes`, `get_linear_payload`
-
-Sessions:
-- `list_sessions`, `get_session`
-
-Workspace:
-- `get_dashboard_summary`
-
-### `propose_context_update` vs `apply_context_update`
-
-- **`propose_context_update`**: creates a pending proposal for human review
-- **`apply_context_update`**: applies changes immediately and creates a new context version
-
-Use `apply_context_update` only when the user explicitly asks for immediate change.
-
----
-
-## Skills System
-
-Quiver loads static markdown skills from `/skills` (pinned from `coreyhaines31/marketingskills`).
-
-- Skills are loaded at session start from disk
-- Feedback mode uses `customer-research`
-- Create mode skill selection depends on artifact type
-- Admins can update to newer pinned skill versions from Settings
-
-See `lib/ai/skills.ts` for exact mapping.
-
----
-
-## System Prompt Assembly
-
-Each session prompt is assembled from:
-
-1. Role definition
-2. Active product context
-3. Loaded skill content
-4. Performance history (create mode)
-5. Featured customer quotes (create + strategy)
-6. Published content context (create + strategy)
-7. Mode instructions
-8. Output instructions
-
-See `lib/ai/session.ts`.
-
----
-
-## Tech Stack
-
-| Layer | Choice |
-|---|---|
-| Framework | Next.js 14, App Router |
-| Language | TypeScript (strict mode) |
-| Styling | Tailwind CSS |
-| Components | shadcn/ui + Radix UI |
-| Database | Supabase (Postgres) |
-| ORM | Prisma |
-| Auth | Supabase Auth |
-| AI | Anthropic SDK |
-| Testing | Vitest |
-| Deployment | Vercel |
-
----
-
-## Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for local setup, branch naming, and PR checklist.
-
-Good first contributions:
-
-1. Rich text editing experience for Content body
-2. Additional MCP tool domains
-3. New session modes and mode-specific UX
-4. Expanded artifact-type to skill routing
-5. Content import (import endpoint and UI)
-
----
-
-## Documentation
-
-- Product specification: [`SPEC.md`](SPEC.md)
-- Agent instructions: [`CLAUDE.md`](CLAUDE.md), [`AGENTS.md`](AGENTS.md)
-- Build prompt context: [`PROMPT.md`](PROMPT.md)
-
----
-
-## License
-
-[MIT](LICENSE) for Quiver's own source.
-
-The `/skills` directory is a vendored copy of
-[marketingskills](https://github.com/coreyhaines31/marketingskills), pinned in
-`skills/PINNED_VERSION` and licensed MIT by its own authors — see
-[`skills/LICENSE`](skills/LICENSE).
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, tests, and adding skills; [SPEC.md](SPEC.md) for the product model. Quiver's source is [MIT licensed](LICENSE). The vendored [`skills/`](skills) directory is pinned from [marketingskills](https://github.com/coreyhaines31/marketingskills) under its own [MIT license](skills/LICENSE).

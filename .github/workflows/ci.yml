@@ -1,0 +1,50 @@
+# CONTRIBUTING.md asks every contributor to run the type check, the build and
+# the tests before opening a pull request. Nothing enforced that, so a fork
+# could not tell whether a change was safe without running it by hand.
+#
+# The build needs a DATABASE_URL because `next build` runs `prisma generate`
+# and Next evaluates route modules during static analysis. It is a throwaway
+# value pointing at nothing — no database is reachable from CI and none is
+# needed, because nothing here queries one.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+      NEXT_PUBLIC_SUPABASE_URL: https://ci.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+      ANTHROPIC_API_KEY: ci-anthropic-key
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      QUIVER_SHARE_SECRET: ci-share-secret
+      CRON_SECRET: ci-cron-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Types
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npx vitest run
+
+      # Last, because it is the slowest and runs the linter too.
+      - name: Build
+        run: npm run build
