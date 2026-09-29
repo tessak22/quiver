@@ -12,12 +12,23 @@ vi.mock('@neondatabase/serverless', () => ({
   neon: vi.fn(() => sqlMock),
 }));
 
+// Supabase PostgREST chain: from().select().eq().limit() resolves to { data, error }.
+const limitMock = vi.fn();
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => ({
+    from: () => ({ select: () => ({ eq: () => ({ limit: limitMock }) }) }),
+  })),
+}));
+
 // Import AFTER the mock is registered.
 import { isTeamMember, hasActiveContext } from '@/lib/middleware-db';
 
 beforeEach(() => {
   sqlMock.mockReset();
-  process.env.DATABASE_URL = 'postgres://test';
+  limitMock.mockReset();
+  process.env.DATABASE_URL = 'postgres://user:pw@ep-test.us-east-2.aws.neon.tech/db';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-test';
 });
 
 describe('isTeamMember', () => {
@@ -50,6 +61,33 @@ describe('hasActiveContext', () => {
 
   it('reports failed=true on query error so middleware does not send user to /setup', async () => {
     sqlMock.mockRejectedValueOnce(new Error('timeout'));
+    await expect(hasActiveContext()).resolves.toEqual({ exists: false, failed: true });
+  });
+});
+
+describe('non-Neon DATABASE_URL (Supabase PostgREST)', () => {
+  beforeEach(() => {
+    process.env.DATABASE_URL = 'postgresql://postgres.ref:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres';
+  });
+
+  it('isTeamMember returns true when PostgREST returns a row', async () => {
+    limitMock.mockResolvedValueOnce({ data: [{ id: 'u1' }], error: null });
+    await expect(isTeamMember('u1')).resolves.toBe(true);
+    expect(sqlMock).not.toHaveBeenCalled();
+  });
+
+  it('isTeamMember fails closed on a PostgREST error', async () => {
+    limitMock.mockResolvedValueOnce({ data: null, error: { code: 'PGRST', message: 'boom' } });
+    await expect(isTeamMember('u1')).resolves.toBe(false);
+  });
+
+  it('hasActiveContext reports exists=false, failed=false on empty result', async () => {
+    limitMock.mockResolvedValueOnce({ data: [], error: null });
+    await expect(hasActiveContext()).resolves.toEqual({ exists: false, failed: false });
+  });
+
+  it('hasActiveContext reports failed=true on a PostgREST error', async () => {
+    limitMock.mockResolvedValueOnce({ data: null, error: { code: 'PGRST', message: 'boom' } });
     await expect(hasActiveContext()).resolves.toEqual({ exists: false, failed: true });
   });
 });
