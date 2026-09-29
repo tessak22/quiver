@@ -4,7 +4,7 @@
 
 Quiver is an open-source, self-hosted **agentic developer marketing system** for technical founders and teams building developer tools. It connects product context, customer research, campaigns, content, and results, so the next piece of work starts with what your team knows—not another empty chat. Work in the web app or through MCP-compatible clients; keep the history and decisions in Quiver.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET,CRON_SECRET)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET,CRON_SECRET,MCP_AUTH_SECRET)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Choose your path:** [Self-host this repository](#self-hosting) · [Use hosted Quiver](https://www.quivergtm.dev/) · [Contribute](CONTRIBUTING.md)
@@ -53,7 +53,7 @@ You'll need a [Supabase](https://supabase.com) project (Postgres and Auth), an [
    ```bash
    npx prisma migrate deploy
    ```
-5. Open the deployment, sign in, and complete onboarding to create the first product-context version.
+5. Open the deployment. A fresh install offers **Create the first account** on the login screen — that account becomes the admin. Complete onboarding to create the first product-context version.
 
 For local development, see [CONTRIBUTING.md](CONTRIBUTING.md). Don't commit `.env.local` or expose the Supabase service-role key in client-side code.
 
