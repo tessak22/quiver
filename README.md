@@ -1,6 +1,8 @@
 # Quiver
 
-Quiver is an open-source, self-hosted, AI-powered marketing command center for product teams. Every session starts with your actual positioning, ICP, messaging, and past results, so outputs improve as your team logs more work.
+Quiver is a developer marketing system. It keeps product context, customer evidence, campaigns, content, tasks, distribution and performance connected, so every AI session starts from your team's approved positioning, ICP, messaging and past results instead of a blank prompt.
+
+This repository is the **self-hosted edition**, MIT licensed. There is also a [hosted version at quivergtm.dev](https://www.quivergtm.dev) if you would rather not run it yourself.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -53,7 +55,6 @@ Copy `.env.example` to `.env.local` and fill in values:
 | `NEXT_PUBLIC_APP_URL` | Yes | App URL (`https://...` or `http://localhost:3000`) |
 | `QUIVER_SHARE_SECRET` | Yes | Secret for session share links (`openssl rand -base64 32`) |
 | `MCP_AUTH_SECRET` | No | Optional Bearer auth for `/api/mcp` |
-| `TABSTACK_API_KEY` | No | Reserved for Issue #50 content import (not implemented in this checkout) |
 
 ---
 
@@ -232,7 +233,7 @@ Good first contributions:
 2. Additional MCP tool domains
 3. New session modes and mode-specific UX
 4. Expanded artifact-type to skill routing
-5. Content import implementation for Issue #50 (`TABSTACK_API_KEY`, import endpoint, UI)
+5. Content import (import endpoint and UI)
 
 ---
 

@@ -10,7 +10,7 @@ For the full product specification, read `SPEC.md`. For the original Autopilot k
 
 ## What this project is
 
-Quiver is a self-hosted, open source, AI-powered marketing command center for product teams. It is a context machine: every AI session starts with a complete, structured understanding of the team's product positioning, ICP, competitive landscape, past campaigns, and what has worked. The system compounds — every result logged makes the next session smarter.
+Quiver is an open source, self-hosted developer marketing system for technical founders and developer-tool teams. It is a context machine: every AI session starts with a complete, structured understanding of the team's product positioning, ICP, competitive landscape, past campaigns, and what has worked. The system compounds — every result logged makes the next session smarter.
 
 This is open source (MIT). Write code as if other teams will read, fork, and deploy it.
 

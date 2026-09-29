@@ -10,7 +10,7 @@
 
 ## What is Quiver?
 
-Quiver is a self-hosted, open source, AI-powered marketing command center for product teams.
+Quiver is an open source, self-hosted developer marketing system for technical founders and developer-tool teams.
 
 It is not generic chat. It is a context machine: every session starts with structured product context plus what has and has not worked so far. Output quality improves as teams log more performance, research, and published content.
 
