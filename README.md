@@ -31,13 +31,18 @@ Quiver includes:
 1. **Fork** this repo
 2. **Create a [Supabase](https://supabase.com) project**
 3. **Get an [Anthropic API key](https://console.anthropic.com/settings/keys)**
-4. **Deploy to Vercel** with the button above, or **to Netlify** — `netlify.toml` and
-   `netlify/functions/` are in the repo and the scheduled jobs have Netlify equivalents
+4. **Deploy to Vercel** with the button above
 5. **Run Prisma migration** against your database:
    ```bash
    npx prisma migrate deploy
    ```
 6. **Visit your deployment URL** and complete onboarding
+
+> **Netlify:** `netlify.toml` and `netlify/functions/` are in the repo, so the app
+> itself deploys. The scheduled jobs do **not** work there yet — the functions call
+> the cron routes without the `Authorization: Bearer <CRON_SECRET>` header those
+> routes require, so they are rejected in production. Vercel is the supported path
+> until that is fixed.
 
 ---
 
