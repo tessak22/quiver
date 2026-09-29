@@ -2,7 +2,7 @@
 
 // Client component: handles interactive login form with Supabase Auth
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -14,13 +14,48 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // null while unknown, true only on a fresh install with no account yet.
+  const [firstRun, setFirstRun] = useState<boolean | null>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  // A fresh self-hosted install has no account and no way to make one — every
+  // other path needs an admin who does not exist yet. The server decides
+  // whether this door is open; the answer here only changes what is offered.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/bootstrap')
+      .then((res) => (res.ok ? res.json() : { available: false }))
+      .then((body: { available?: boolean }) => {
+        if (!cancelled) setFirstRun(Boolean(body.available));
+      })
+      .catch(() => {
+        if (!cancelled) setFirstRun(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
+
+    if (firstRun) {
+      const res = await fetch('/api/auth/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const body: { error?: string } = await res.json().catch(() => ({}));
+        setError(body.error ?? 'Could not create the account');
+        setIsLoading(false);
+        return;
+      }
+      setFirstRun(false);
+    }
 
     const { error: authError } = await supabase.auth.signInWithPassword({
       email,
@@ -43,7 +78,9 @@ export default function LoginPage() {
         <div className="space-y-2 text-center">
           <h1 className="text-2xl font-bold tracking-tight">Quiver</h1>
           <p className="text-sm text-muted-foreground">
-            Sign in to your marketing command center
+            {firstRun
+              ? 'Create the first account for this Quiver. You will be its admin.'
+              : 'Sign in to your developer marketing system'}
           </p>
         </div>
 
@@ -82,7 +119,13 @@ export default function LoginPage() {
           </div>
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? 'Signing in...' : 'Sign in'}
+            {isLoading
+              ? firstRun
+                ? 'Creating account...'
+                : 'Signing in...'
+              : firstRun
+                ? 'Create account'
+                : 'Sign in'}
           </Button>
         </form>
       </div>

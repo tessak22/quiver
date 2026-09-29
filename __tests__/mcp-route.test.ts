@@ -2,13 +2,14 @@
  * Tests for the remote MCP HTTP route (app/api/mcp/route.ts).
  *
  * Covers:
- *   - Authentication: Bearer token enforcement when MCP_AUTH_SECRET is set
+ *   - Authentication: Bearer token enforcement, and that an unset
+ *     MCP_AUTH_SECRET is REFUSED outside development rather than waved through
  *   - Method routing: GET, POST, DELETE all delegate to the transport
  *   - Error handling: transport failures return 500 with a body (CLAUDE.md requirement)
  *   - No test hits the database — Prisma and MCP SDK are mocked
  */
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 // ── Mocks (hoisted before any imports) ──────────────────────────────────────
 
@@ -92,9 +93,37 @@ afterEach(() => {
 // ── Authentication ────────────────────────────────────────────────────────────
 
 describe('authentication', () => {
-  it('allows all requests when MCP_AUTH_SECRET is not set', async () => {
+  it('refuses every request when MCP_AUTH_SECRET is not set', async () => {
+    // This endpoint carries the delete tools and sits in PUBLIC_ROUTES, so an
+    // unset secret used to mean an anonymous read, write and delete API on
+    // whatever URL the deploy button produced.
     delete process.env.MCP_AUTH_SECRET;
-    const res = await POST(new Request('http://localhost/api/mcp', { method: 'POST' }));
+    const res = await POST(new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer super-secret-123' },
+      }));
+    expect(res.status).toBe(401);
+    expect(mockHandleRequest).not.toHaveBeenCalled();
+  });
+
+  it('says the deployment is unconfigured, not that the caller got it wrong', async () => {
+    delete process.env.MCP_AUTH_SECRET;
+    const res = await POST(new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer super-secret-123' },
+      }));
+    const body = (await res.json()) as { hint?: string };
+    expect(body.hint).toContain('not set on this deployment');
+  });
+
+  it('accepts a correct token', async () => {
+    process.env.MCP_AUTH_SECRET = 'super-secret-123';
+    const res = await POST(
+      new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer super-secret-123' },
+      }),
+    );
     expect(res.status).toBe(200);
     expect(mockHandleRequest).toHaveBeenCalledOnce();
   });
@@ -154,8 +183,15 @@ describe('authentication', () => {
 // ── Method routing ────────────────────────────────────────────────────────────
 
 describe('method routing', () => {
+  beforeEach(() => {
+    process.env.MCP_AUTH_SECRET = 'super-secret-123';
+  });
+
   it('routes GET requests to the transport', async () => {
-    const req = new Request('http://localhost/api/mcp', { method: 'GET' });
+    const req = new Request('http://localhost/api/mcp', {
+        method: 'GET',
+        headers: { Authorization: 'Bearer super-secret-123' },
+      });
     await GET(req);
     expect(mockHandleRequest).toHaveBeenCalledWith(req);
   });
@@ -173,14 +209,20 @@ describe('method routing', () => {
         },
         id: 1,
       }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer super-secret-123',
+      },
     });
     await POST(req);
     expect(mockHandleRequest).toHaveBeenCalledWith(req);
   });
 
   it('routes DELETE requests to the transport', async () => {
-    const req = new Request('http://localhost/api/mcp', { method: 'DELETE' });
+    const req = new Request('http://localhost/api/mcp', {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer super-secret-123' },
+      });
     await DELETE(req);
     expect(mockHandleRequest).toHaveBeenCalledWith(req);
   });
@@ -189,9 +231,16 @@ describe('method routing', () => {
 // ── Error handling ────────────────────────────────────────────────────────────
 
 describe('error handling', () => {
+  beforeEach(() => {
+    process.env.MCP_AUTH_SECRET = 'super-secret-123';
+  });
+
   it('returns 500 with a JSON body when the transport throws', async () => {
     mockHandleRequest.mockRejectedValue(new Error('transport exploded'));
-    const res = await POST(new Request('http://localhost/api/mcp', { method: 'POST' }));
+    const res = await POST(new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer super-secret-123' },
+      }));
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body).toHaveProperty('error');
@@ -200,7 +249,10 @@ describe('error handling', () => {
 
   it('never returns a 500 with no body (CLAUDE.md requirement)', async () => {
     mockHandleRequest.mockRejectedValue(new Error('boom'));
-    const res = await POST(new Request('http://localhost/api/mcp', { method: 'POST' }));
+    const res = await POST(new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer super-secret-123' },
+      }));
     // Body must be parseable JSON, not empty
     const text = await res.text();
     expect(text.length).toBeGreaterThan(0);
@@ -209,7 +261,10 @@ describe('error handling', () => {
 
   it('returns 500 with a JSON body when server.connect() throws', async () => {
     mockConnect.mockRejectedValue(new Error('connect failed'));
-    const res = await POST(new Request('http://localhost/api/mcp', { method: 'POST' }));
+    const res = await POST(new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer super-secret-123' },
+      }));
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body).toHaveProperty('error');

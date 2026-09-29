@@ -38,6 +38,7 @@ import { registerPerformanceTools } from '@/mcp/tools/performance';
 import { registerWorkspaceTools } from '@/mcp/tools/workspace';
 import { registerResearchTools } from '@/mcp/tools/research';
 import { registerContentTools } from '@/mcp/tools/content';
+import { timingSafeEqual } from 'node:crypto';
 
 // Prisma requires the Node.js runtime (no Edge runtime support).
 export const runtime = 'nodejs';
@@ -64,12 +65,23 @@ function createMcpServer(): McpServer {
 /**
  * Returns true when the request passes authentication.
  *
- * If MCP_AUTH_SECRET is not set, all requests are allowed (internal/localhost use).
- * If it is set, the request must carry `Authorization: Bearer <secret>`.
+ * This endpoint exposes the whole tool surface, including `delete_artifact`,
+ * `delete_campaign`, `delete_content`, `delete_session`, `delete_quote` and
+ * `apply_context_update`. It is also in PUBLIC_ROUTES, so the session gate
+ * never sees it — this function is the only thing in front of it.
+ *
+ * So an unset MCP_AUTH_SECRET is refused in production rather than waved
+ * through. It used to return true, which meant the Deploy to Vercel path in
+ * the README produced a public URL with an anonymous read, write and delete
+ * API on it, and nothing said so at the moment it mattered.
+ *
+ * Development is unchanged: with no secret set, localhost still works, because
+ * requiring one there would only teach people to paste a secret into a config
+ * they are about to throw away.
  */
 function isAuthenticated(request: Request): boolean {
   const secret = process.env.MCP_AUTH_SECRET;
-  if (!secret) return true;
+  if (!secret) return process.env.NODE_ENV === 'development';
 
   const authHeader = request.headers.get('authorization');
   if (!authHeader) return false;
@@ -79,7 +91,23 @@ function isAuthenticated(request: Request): boolean {
 
   const scheme = authHeader.slice(0, spaceIdx);
   const token = authHeader.slice(spaceIdx + 1);
-  return scheme === 'Bearer' && token === secret;
+  if (scheme !== 'Bearer') return false;
+
+  // Constant-time: a length-dependent early exit leaks the secret a character
+  // at a time to anyone who can time the responses.
+  return timingSafeEqualString(token, secret);
+}
+
+/** Compares two strings without leaking their contents through timing. */
+function timingSafeEqualString(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, 'utf8');
+  const bBuf = Buffer.from(b, 'utf8');
+  if (aBuf.length !== bBuf.length) {
+    // Still compare, so the work does not depend on whether lengths matched.
+    timingSafeEqual(aBuf, aBuf);
+    return false;
+  }
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 async function handleRequest(request: Request): Promise<Response> {
@@ -87,7 +115,9 @@ async function handleRequest(request: Request): Promise<Response> {
     return NextResponse.json(
       {
         error: 'Unauthorized',
-        hint: 'Set Authorization: Bearer <MCP_AUTH_SECRET> in your connector config.',
+        hint: process.env.MCP_AUTH_SECRET
+          ? 'Set Authorization: Bearer <MCP_AUTH_SECRET> in your connector config.'
+          : 'MCP_AUTH_SECRET is not set on this deployment. Set it, redeploy, then send it as a Bearer token.',
       },
       { status: 401 },
     );

@@ -89,7 +89,7 @@ npm run dev
 | `NEXT_PUBLIC_APP_URL` | Yes | App URL (`https://...` or `http://localhost:3000`) |
 | `QUIVER_SHARE_SECRET` | Yes | Signs session share links — `openssl rand -base64 32` |
 | `CRON_SECRET` | Yes in production | Bearer token Vercel sends to `/api/cron/pattern-report`. Without it the job answers 200 and does nothing, so the monthly pattern report never runs. `openssl rand -base64 32` |
-| `MCP_AUTH_SECRET` | No | Bearer auth for `/api/mcp`. Unset means the endpoint accepts any caller — set it unless the deployment is private |
+| `MCP_AUTH_SECRET` | Yes in production | Bearer auth for `/api/mcp`. Unset, the endpoint refuses every request outside local development — it exposes the full tool surface, including deletes. `openssl rand -base64 32` |
 
 ---
 
@@ -114,8 +114,6 @@ Use this API at build time or runtime in your website. Quiver stays the source o
 
 ---
 
----
-
 ## MCP Server
 
 Quiver ships with an MCP server that exposes the full product surface as tools for Claude Desktop, Cursor, Windsurf, and other MCP-compatible clients.
@@ -129,8 +127,7 @@ A better-informed Claude instance (project memory + connected services + Quiver 
 ```bash
 cd mcp
 npm install
-npx prisma generate
-npm run build
+npm run build   # runs prisma generate itself
 ```
 
 ### Claude Desktop config (stdio)
@@ -176,42 +173,35 @@ https://<your-domain>/api/mcp
 ```
 
 - Set `MCP_AUTH_SECRET` to require `Authorization: Bearer <secret>`
-- Without `MCP_AUTH_SECRET`, endpoint allows requests (safe only for private/internal deployments)
+- Without `MCP_AUTH_SECRET`, the endpoint refuses every request outside local development. It exposes every tool, including the destructive ones, so it does not open itself by default.
 
-### Tool domains
+### Tools
+
+46 tools, generated from `mcp/tools/*.ts`:
 
 Context:
 - `get_context`, `get_context_history`, `propose_context_update`, `apply_context_update`, `restore_context_version`
 
 Campaigns:
-- `list_campaigns`, `get_campaign`, `create_campaign`, `update_campaign`, `update_campaign_status`
+- `list_campaigns`, `get_campaign`, `create_campaign`, `update_campaign`, `update_campaign_status`, `delete_campaign`
+
+Sessions:
+- `list_sessions`, `get_session`, `delete_session`
 
 Artifacts:
-- `list_artifacts`, `get_artifact`, `save_artifact`, `update_artifact`, `update_artifact_status`
+- `list_artifacts`, `get_artifact`, `save_artifact`, `update_artifact`, `update_artifact_status`, `archive_artifact`, `delete_artifact`
+
+Content:
+- `list_content`, `get_content`, `save_content`, `update_content`, `add_distribution`, `log_content_metrics`, `get_content_metrics`, `get_content_calendar`, `archive_content`, `delete_content`
+
+Research:
+- `list_research_entries`, `get_research_entry`, `save_research_entry`, `list_quotes`, `get_linear_payload`, `update_research_entry`, `delete_research_entry`, `update_quote`, `delete_quote`
 
 Performance:
 - `log_performance`, `get_performance_log`, `get_close_the_loop_queue`, `list_proposals`, `action_proposal`
 
-Content:
-- `list_content`, `get_content`, `save_content`, `update_content`, `add_distribution`, `log_content_metrics`, `get_content_metrics`, `get_content_calendar`
-
-Research:
-- `list_research_entries`, `get_research_entry`, `save_research_entry`, `list_quotes`, `get_linear_payload`
-
-Sessions:
-- `list_sessions`, `get_session`
-
 Workspace:
 - `get_dashboard_summary`
-
-### `propose_context_update` vs `apply_context_update`
-
-- **`propose_context_update`**: creates a pending proposal for human review
-- **`apply_context_update`**: applies changes immediately and creates a new context version
-
-Use `apply_context_update` only when the user explicitly asks for immediate change.
-
----
 
 ---
 
@@ -262,7 +252,7 @@ Worth knowing before you start:
 
 ## License
 
-[MIT](LICENSE) for Quiver's own source.
+[MIT](LICENSE) for Quiver's own source. See [NOTICE](NOTICE) for third-party components.
 
 The `/skills` directory is a vendored copy of
 [marketingskills](https://github.com/coreyhaines31/marketingskills), pinned in

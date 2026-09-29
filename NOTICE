@@ -1,0 +1,15 @@
+Quiver
+Copyright (c) 2026 Tessa Kriesel
+
+This product includes software developed by third parties.
+
+The MIT licence in LICENSE covers Quiver's own source. The `/skills` directory
+is a vendored copy of coreyhaines31/marketingskills, pinned in
+skills/PINNED_VERSION. It is the work of its own authors, licensed MIT, and
+that licence is reproduced verbatim in skills/LICENSE. LICENSE claims no
+copyright over it.
+
+This file exists because the note previously lived at the end of LICENSE, which
+stopped GitHub detecting the repository as MIT — the sidebar read "Other" while
+the README badge read MIT. A licence file that scanners recognise is worth more
+than the convenience of one file.
