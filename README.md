@@ -4,7 +4,7 @@ Quiver is a developer marketing system. It keeps product context, customer evide
 
 This repository is the **self-hosted edition**, MIT licensed. There is also a [hosted version at quivergtm.dev](https://www.quivergtm.dev) if you would rather not run it yourself.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftessak22%2Fquiver&env=DATABASE_URL,DIRECT_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,ANTHROPIC_API_KEY,NEXT_PUBLIC_APP_URL,QUIVER_SHARE_SECRET,CRON_SECRET)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -54,7 +54,8 @@ Copy `.env.example` to `.env.local` and fill in values:
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key |
 | `NEXT_PUBLIC_APP_URL` | Yes | App URL (`https://...` or `http://localhost:3000`) |
 | `QUIVER_SHARE_SECRET` | Yes | Secret for session share links (`openssl rand -base64 32`) |
-| `MCP_AUTH_SECRET` | No | Optional Bearer auth for `/api/mcp` |
+| `CRON_SECRET` | Yes in production | Bearer token Vercel sends to `/api/cron/pattern-report`. Without it the job answers 200 and does nothing, so the monthly pattern report never runs. `openssl rand -base64 32` |
+| `MCP_AUTH_SECRET` | No | Bearer auth for `/api/mcp`. Unset means the endpoint accepts any caller — set it unless the deployment is private |
 
 ---
 
