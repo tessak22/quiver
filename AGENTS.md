@@ -9,7 +9,7 @@ Claude Code users: see CLAUDE.md — same content, same rules.
 
 This file is read automatically by Claude Code at the start of every session. It contains persistent rules that apply to all work in this repo — initial build, bug fixes, feature additions, and everything after.
 
-For the full product specification, read `SPEC.md`. For the original Autopilot kick-off context, read `PROMPT.md`.
+For the full product specification, read `SPEC.md`.
 
 ---
 
@@ -149,4 +149,4 @@ Do not pause for: UI components, API routes, lib utilities, types, bug fixes, de
 
 ## GitHub issues
 
-All work is tracked in GitHub issues at `github.com/tessak22/quiver/issues`. Each issue has full acceptance criteria. Reference the issue number in every commit. Work through issues in number order unless there is a clear dependency reason to do otherwise.
+Work is tracked in GitHub issues at `github.com/tessak22/quiver/issues`. Reference an issue number in a commit when one applies. There is no numbered backlog to work through — the original one is closed.

@@ -527,7 +527,7 @@ Remote HTTP connector uses deployed endpoint:
 
 ---
 
-## Scheduled sync strategy (Issue #39, reframed)
+## Scheduled sync strategy
 
 MCP-first remains the primary path for external metric pulls.
 
@@ -586,7 +586,7 @@ Build and validation order by dependency:
 | 4 | Dark mode (Issue #45) | UX improvement, no schema impact |
 | 5 | Research layer (Issue #47) | Depends on campaigns/context/performance |
 | 6 | Content layer (Issue #49) | Depends on campaigns/context + public API |
-| 8 | Scheduled sync (Issue #39, Phase 3) | Defer until MCP-first workflow proven in production |
+| 8 | Scheduled sync | Defer until MCP-first workflow proven in production |
 
 ---
 
@@ -622,8 +622,6 @@ QUIVER_SHARE_SECRET=
 
 # Optional MCP HTTP auth
 MCP_AUTH_SECRET=
-
-# Optional planned content import (Issue #50, not yet implemented in this checkout)
 ```
 
 ---

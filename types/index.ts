@@ -272,7 +272,7 @@ export interface BulkOperationResult {
 }
 
 // ---------------------------------------------------------------------------
-// Issue #38: Notifications
+// Notifications
 // ---------------------------------------------------------------------------
 
 export type NotificationType = 'pattern_report' | 'context_proposal' | 'artifact_live';
