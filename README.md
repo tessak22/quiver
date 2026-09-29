@@ -247,8 +247,9 @@ Good first contributions:
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) for Quiver's own source.
 
----
-
-Built with the [marketingskills](https://github.com/coreyhaines31/marketingskills) framework.
+The `/skills` directory is a vendored copy of
+[marketingskills](https://github.com/coreyhaines31/marketingskills), pinned in
+`skills/PINNED_VERSION` and licensed MIT by its own authors — see
+[`skills/LICENSE`](skills/LICENSE).
