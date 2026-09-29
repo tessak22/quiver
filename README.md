@@ -1,6 +1,6 @@
 # Quiver
 
-Quiver is an agentic developer marketing system. It keeps product context, customer evidence, campaigns, content, tasks, distribution and performance connected, so every AI session starts from your team's approved positioning, ICP, messaging and past results instead of a blank prompt.
+Quiver is a developer marketing system. It keeps product context, customer evidence, campaigns, content, tasks, distribution and performance connected, so every AI session starts from your team's approved positioning, ICP, messaging and past results instead of a blank prompt.
 
 This repository is the **self-hosted edition**, MIT licensed. There is also a [hosted version at quivergtm.dev](https://www.quivergtm.dev) if you would rather not run it yourself.
 
@@ -37,12 +37,6 @@ Quiver includes:
    npx prisma migrate deploy
    ```
 6. **Visit your deployment URL** and complete onboarding
-
-> **Netlify:** `netlify.toml` and `netlify/functions/` are in the repo, so the app
-> itself deploys. The scheduled jobs do **not** work there yet — the functions call
-> the cron routes without the `Authorization: Bearer <CRON_SECRET>` header those
-> routes require, so they are rejected in production. Vercel is the supported path
-> until that is fixed.
 
 ---
 

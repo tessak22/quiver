@@ -7,7 +7,7 @@ This prompt is written for Autopilot. Decisions are pre-made. Read everything be
 
 ## What you are building
 
-You are building **Quiver** — an open source, self-hosted, AI-powered marketing command center for product teams. The full spec is in `SPEC.md` at the root of this repo. Read it completely before writing a single line of code.
+You are building **Quiver** — an open source, self-hosted developer marketing system for technical founders and developer-tool teams. The full spec is in `SPEC.md` at the root of this repo. Read it completely before writing a single line of code.
 
 Quiver is a context machine. Every AI session starts with a complete, structured understanding of the team's product positioning, ICP, competitive landscape, past campaigns, and what has worked. The AI outputs are grounded in real history, not generic best practices. The system compounds: every result logged makes the next session smarter.
 
@@ -294,7 +294,7 @@ Every session system prompt is assembled in this exact order:
 ```
 1. ROLE
    "You are an expert B2B marketing strategist. You are working inside Quiver,
-   a marketing command center for [workspace product name]. Your responses are
+   a developer marketing system for [workspace product name]. Your responses are
    grounded in the team's actual product context, history, and positioning —
    not generic marketing advice. Be direct, specific, and always connect
    recommendations back to the product context you've been given."
@@ -460,7 +460,7 @@ Work through them in issue number order (#1 through #24). Each issue has full ac
 
 When Quiver is done, a product team should be able to:
 
-1. Fork the repo, add env vars, deploy to Vercel, and have a working marketing command center in under 30 minutes
+1. Fork the repo, add env vars, deploy to Vercel, and have a working developer marketing system in under 30 minutes
 2. Complete the onboarding wizard and have a structured, AI-ready product marketing context in under 20 minutes
 3. Start a Strategy session and receive recommendations that are specifically grounded in their product's positioning and ICP — not generic marketing advice
 4. Save an artifact from any session in one click with pre-populated metadata
