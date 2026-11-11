@@ -14,10 +14,12 @@
  *     here is a decision that it has no side effects.
  *   - __tests__/mcp-read-only-tools.test.ts fails when a registered get_* or
  *     list_* tool is missing from this list, so a new read tool gets a review.
- *     If a new tool with that prefix writes anything, rename it instead.
+ *     Before adding one, confirm its handler and every lib/db helper it calls
+ *     only read. If it writes anything, rename it instead: the get_ and list_
+ *     prefixes mean read-only in this codebase.
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer, RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   // Context
@@ -50,20 +52,36 @@ export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   'get_content_metrics',
 ]);
 
+type RegisterFn = (name: string, ...rest: unknown[]) => RegisteredTool;
+
+/** Wraps a registration method so tools outside `allowed` are removed at once. */
+function allowOnly(register: RegisterFn, allowed: ReadonlySet<string>): RegisterFn {
+  return (name, ...rest) => {
+    const registered = register(name, ...rest);
+    if (!allowed.has(name)) registered.remove();
+    return registered;
+  };
+}
+
 /**
- * Makes `server.tool()` skip every tool whose name is not in `allowed`.
+ * Makes `server.tool()` and `server.registerTool()` drop every tool whose name
+ * is not in `allowed`.
  *
- * Call it before the register*Tools functions run. Tools that are never
- * registered are absent from tools/list, and the SDK rejects a tools/call for
- * them, so this narrows both listing and calling.
+ * Call it before the register*Tools functions run. Each tool is registered
+ * and then removed straight away, so callers still get a real RegisteredTool
+ * back. A removed tool is absent from tools/list, and the SDK rejects a
+ * tools/call for it, so this narrows both listing and calling. The route's
+ * 403 pre-check is the other layer, and covers any registration path this
+ * does not wrap.
  */
 export function restrictToolRegistration(
   server: McpServer,
   allowed: ReadonlySet<string>,
 ): McpServer {
-  const register = server.tool.bind(server) as (...args: unknown[]) => unknown;
-  const filtered = (...args: unknown[]): unknown =>
-    typeof args[0] === 'string' && allowed.has(args[0]) ? register(...args) : undefined;
-  server.tool = filtered as McpServer['tool'];
+  server.tool = allowOnly(server.tool.bind(server) as RegisterFn, allowed) as McpServer['tool'];
+  server.registerTool = allowOnly(
+    server.registerTool.bind(server) as RegisterFn,
+    allowed,
+  ) as McpServer['registerTool'];
   return server;
 }

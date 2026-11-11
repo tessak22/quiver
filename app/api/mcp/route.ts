@@ -175,9 +175,10 @@ async function handleRequest(request: Request): Promise<Response> {
     return NextResponse.json(
       {
         error: 'Unauthorized',
-        hint: process.env.MCP_AUTH_SECRET
-          ? 'Set Authorization: Bearer <MCP_AUTH_SECRET> in your connector config.'
-          : 'MCP_AUTH_SECRET is not set on this deployment. Set it, redeploy, then send it as a Bearer token.',
+        hint:
+          process.env.MCP_AUTH_SECRET || process.env.MCP_READONLY_SECRET
+            ? 'Set Authorization: Bearer <token> in your connector config.'
+            : 'MCP_AUTH_SECRET is not set on this deployment. Set it, redeploy, then send it as a Bearer token.',
       },
       { status: 401 },
     );

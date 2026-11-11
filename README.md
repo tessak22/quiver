@@ -72,7 +72,7 @@ Copy [`.env.example`](.env.example) to `.env.local` for local work, or set the s
 | `NEXT_PUBLIC_APP_URL` | Yes | Your app URL, e.g. `https://your-domain.example`. |
 | `QUIVER_SHARE_SECRET` | Yes | Secret for session share links; generate it yourself. |
 | `MCP_AUTH_SECRET` | Yes in production | Bearer token for `/api/mcp`. Without it, that endpoint refuses every request outside local development — it exposes writes and deletes. |
-| `MCP_READONLY_SECRET` | No | Second Bearer token for `/api/mcp` that can only list and call read tools (`get_*`, `list_*`). Unset means no read-only token is accepted. |
+| `MCP_READONLY_SECRET` | No | Second Bearer token for `/api/mcp` that can only list and call read tools (`get_*`, `list_*`). Unset means no read-only token is accepted. Works with or without `MCP_AUTH_SECRET`. |
 | `CRON_SECRET` | Yes in production | Bearer token Vercel sends to `/api/cron/pattern-report`. Without it the job returns 200 and does nothing, so the monthly pattern report never runs. |
 
 ## Public Content API
@@ -123,7 +123,7 @@ Point Claude Desktop, Cursor, or another stdio MCP client at the absolute path t
 
 The Next.js app exposes Streamable HTTP at `https://<your-domain>/api/mcp`. **Set `MCP_AUTH_SECRET` before deploying.** Without it the endpoint refuses every request outside local development, because it exposes tools that write and delete data. Clients then send `Authorization: Bearer <your-secret>`. Treat the secret and database connection string as credentials.
 
-To share read access without write access, set `MCP_READONLY_SECRET` too. A client sending that token sees only the read tools listed in [`mcp/lib/read-only-tools.ts`](mcp/lib/read-only-tools.ts), and any other `tools/call` gets a 403.
+To share read access without write access, set `MCP_READONLY_SECRET` too. A client sending that token sees only the read tools listed in [`mcp/lib/read-only-tools.ts`](mcp/lib/read-only-tools.ts), and any other `tools/call` gets a 403. The read-only token works even when `MCP_AUTH_SECRET` is unset; without either secret, nothing outside local development gets in.
 
 The tools are grouped by context, campaigns, artifacts, performance, content, research, sessions, and workspace; see [`mcp/tools`](mcp/tools) for the exact list. `propose_context_update` queues a change for review. `apply_context_update` changes the active context immediately and creates a version: use it only when a human explicitly directs the change. MCP access is powerful; connect only clients you trust.
 

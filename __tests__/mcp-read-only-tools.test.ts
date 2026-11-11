@@ -67,7 +67,11 @@ describe('READ_ONLY_TOOLS', () => {
   });
 
   it('covers every registered get_* and list_* tool', () => {
-    const reads = registeredTools.filter((n) => /^(get|list)_/.test(n));
-    expect([...READ_ONLY_TOOLS].sort()).toEqual([...new Set(reads)].sort());
+    const reads = [...new Set(registeredTools.filter((n) => /^(get|list)_/.test(n)))];
+    const missing = reads.filter((n) => !READ_ONLY_TOOLS.has(n));
+    // A failure here means a new get_* or list_* tool exists. Before adding it
+    // to READ_ONLY_TOOLS, confirm its handler only reads. If it writes, rename
+    // it: those prefixes mean read-only in this codebase.
+    expect(missing, `Review these tools for side effects, then allowlist or rename: ${missing.join(', ')}`).toEqual([]);
   });
 });
