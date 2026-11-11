@@ -14,10 +14,13 @@
  *   - Stateless mode: each request creates a fresh server + transport.
  *     No shared in-memory session state between requests — compatible with
  *     Vercel serverless where instances don't share memory across invocations.
- *   - Auth: set MCP_AUTH_SECRET in env for Bearer token protection. Omit the
- *     env var to allow unauthenticated access (useful on localhost or inside
- *     a private VPC). Claude browser connectors send the token automatically
- *     once configured.
+ *   - Auth: set MCP_AUTH_SECRET in env for Bearer token protection. Without
+ *     it the endpoint refuses every request outside local development.
+ *     Claude browser connectors send the token automatically once configured.
+ *   - Read-only key: set MCP_READONLY_SECRET to issue a second Bearer token
+ *     that sees and calls only the tools in READ_ONLY_TOOLS. Enforced twice:
+ *     other tools are never registered for that caller, and a tools/call for
+ *     one is refused with 403 before it reaches the transport.
  *   - Timeout: maxDuration 60 s covers all read tools comfortably. Upgrade to
  *     Vercel Pro and raise maxDuration to 300 if heavy write tools time out.
  */
@@ -38,6 +41,7 @@ import { registerPerformanceTools } from '@/mcp/tools/performance';
 import { registerWorkspaceTools } from '@/mcp/tools/workspace';
 import { registerResearchTools } from '@/mcp/tools/research';
 import { registerContentTools } from '@/mcp/tools/content';
+import { READ_ONLY_TOOLS, restrictToolRegistration } from '@/mcp/lib/read-only-tools';
 import { timingSafeEqual } from 'node:crypto';
 
 // Prisma requires the Node.js runtime (no Edge runtime support).
@@ -46,9 +50,16 @@ export const runtime = 'nodejs';
 // Adjust to match your Vercel plan: 60 s (Hobby) or up to 300 s (Pro).
 export const maxDuration = 60;
 
-/** Build a fresh McpServer with all 34 Quiver tools registered. */
-function createMcpServer(): McpServer {
+/** What an authenticated caller may do. */
+type McpRole = 'full' | 'readonly';
+
+/**
+ * Build a fresh McpServer. A full caller gets every Quiver tool; a read-only
+ * caller gets only the tools in READ_ONLY_TOOLS.
+ */
+function createMcpServer(role: McpRole): McpServer {
   const server = new McpServer({ name: 'quiver', version: '1.0.0' });
+  if (role === 'readonly') restrictToolRegistration(server, READ_ONLY_TOOLS);
 
   registerContextTools(server);
   registerCampaignTools(server);
@@ -63,12 +74,12 @@ function createMcpServer(): McpServer {
 }
 
 /**
- * Returns true when the request passes authentication.
+ * Returns the caller's role, or null when the request fails authentication.
  *
  * This endpoint exposes the whole tool surface, including `delete_artifact`,
  * `delete_campaign`, `delete_content`, `delete_session`, `delete_quote` and
  * `apply_context_update`. It is also in PUBLIC_ROUTES, so the session gate
- * never sees it — this function is the only thing in front of it.
+ * never sees it; this function is the only thing in front of it.
  *
  * So an unset MCP_AUTH_SECRET is refused in production rather than waved
  * through. It used to return true, which meant the Deploy to Vercel path in
@@ -78,24 +89,40 @@ function createMcpServer(): McpServer {
  * Development is unchanged: with no secret set, localhost still works, because
  * requiring one there would only teach people to paste a secret into a config
  * they are about to throw away.
+ *
+ * MCP_READONLY_SECRET, when set, is a second token that maps to the
+ * `readonly` role. It works whether or not MCP_AUTH_SECRET is set. If the two
+ * secrets are equal, the read-only one is ignored, so the token keeps full
+ * access rather than silently changing meaning.
  */
-function isAuthenticated(request: Request): boolean {
-  const secret = process.env.MCP_AUTH_SECRET;
-  if (!secret) return process.env.NODE_ENV === 'development';
+function authenticate(request: Request): McpRole | null {
+  const fullSecret = process.env.MCP_AUTH_SECRET;
+  const readonlySecret = process.env.MCP_READONLY_SECRET;
+  const token = bearerToken(request);
 
+  if (token !== null) {
+    if (fullSecret && timingSafeEqualString(token, fullSecret)) return 'full';
+    if (readonlySecret && readonlySecret !== fullSecret && timingSafeEqualString(token, readonlySecret)) {
+      return 'readonly';
+    }
+  }
+
+  if (!fullSecret && process.env.NODE_ENV === 'development') return 'full';
+  return null;
+}
+
+/** Extracts the token from `Authorization: Bearer <token>`, or null. */
+function bearerToken(request: Request): string | null {
   const authHeader = request.headers.get('authorization');
-  if (!authHeader) return false;
+  if (!authHeader) return null;
 
   const spaceIdx = authHeader.indexOf(' ');
-  if (spaceIdx === -1) return false;
+  if (spaceIdx === -1) return null;
 
   const scheme = authHeader.slice(0, spaceIdx);
   const token = authHeader.slice(spaceIdx + 1);
-  if (scheme !== 'Bearer') return false;
-
-  // Constant-time: a length-dependent early exit leaks the secret a character
-  // at a time to anyone who can time the responses.
-  return timingSafeEqualString(token, secret);
+  if (scheme !== 'Bearer' || token.length === 0) return null;
+  return token;
 }
 
 /** Compares two strings without leaking their contents through timing. */
@@ -110,8 +137,41 @@ function timingSafeEqualString(a: string, b: string): boolean {
   return timingSafeEqual(aBuf, bBuf);
 }
 
+/**
+ * For a read-only caller, finds the first tools/call in the JSON-RPC body
+ * (single message or batch) that names a tool outside READ_ONLY_TOOLS.
+ * Returns null when there is none or the body is not JSON; the transport
+ * reports malformed bodies itself.
+ */
+async function findForbiddenToolCall(
+  request: Request,
+): Promise<{ id: unknown; name: string } | null> {
+  if (request.method !== 'POST') return null;
+
+  let body: unknown;
+  try {
+    body = await request.clone().json();
+  } catch {
+    return null;
+  }
+
+  const messages = Array.isArray(body) ? body : [body];
+  for (const message of messages) {
+    if (typeof message !== 'object' || message === null) continue;
+    const { method, params, id } = message as { method?: unknown; params?: unknown; id?: unknown };
+    if (method !== 'tools/call') continue;
+    const name =
+      typeof params === 'object' && params !== null ? (params as { name?: unknown }).name : undefined;
+    if (typeof name !== 'string' || !READ_ONLY_TOOLS.has(name)) {
+      return { id: id ?? null, name: typeof name === 'string' ? name : String(name) };
+    }
+  }
+  return null;
+}
+
 async function handleRequest(request: Request): Promise<Response> {
-  if (!isAuthenticated(request)) {
+  const role = authenticate(request);
+  if (role === null) {
     return NextResponse.json(
       {
         error: 'Unauthorized',
@@ -124,7 +184,24 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   try {
-    const server = createMcpServer();
+    if (role === 'readonly') {
+      const forbidden = await findForbiddenToolCall(request);
+      if (forbidden) {
+        return NextResponse.json(
+          {
+            jsonrpc: '2.0',
+            id: forbidden.id,
+            error: {
+              code: -32003,
+              message: `Forbidden: the read-only key cannot call ${forbidden.name}.`,
+            },
+          },
+          { status: 403 },
+        );
+      }
+    }
+
+    const server = createMcpServer(role);
 
     // Stateless mode (sessionIdGenerator: undefined): no session ID is issued
     // and no session state is retained between requests. Required for Vercel
