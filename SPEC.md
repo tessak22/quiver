@@ -523,7 +523,8 @@ Claude Desktop / Cursor use the built `mcp/dist/index.js` command.
 
 Remote HTTP connector uses deployed endpoint:
 - `https://<your-domain>/api/mcp`
-- `MCP_AUTH_SECRET` Bearer token. Required in production: without it the endpoint refuses every request outside local development.
+- `MCP_AUTH_SECRET` Bearer token. Required in production: without it the endpoint refuses every full-access request outside local development.
+- `MCP_READONLY_SECRET` optional second Bearer token limited to the read tools in `mcp/lib/read-only-tools.ts`.
 
 ---
 
@@ -620,8 +621,11 @@ ANTHROPIC_API_KEY=
 NEXT_PUBLIC_APP_URL=
 QUIVER_SHARE_SECRET=
 
-# Required in production: /api/mcp refuses everything without it
+# Required in production: /api/mcp refuses every full-access request without it
 MCP_AUTH_SECRET=
+
+# Optional: read-only Bearer token for /api/mcp (get_* and list_* tools only)
+MCP_READONLY_SECRET=
 
 # Required in production: Vercel sends this to /api/cron/pattern-report
 CRON_SECRET=

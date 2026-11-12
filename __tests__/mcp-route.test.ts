@@ -45,9 +45,28 @@ const mockHandleRequest = vi.fn<[Request], Promise<Response>>().mockResolvedValu
 
 const mockConnect = vi.fn<[], Promise<void>>().mockResolvedValue(undefined);
 
+// Tool names registered on the most recent server the route built. The SDK
+// lists exactly the registered tools on tools/list, so this is what a client
+// would see.
+let lastRegisteredTools: string[] = [];
+
 vi.mock('@modelcontextprotocol/sdk/server/mcp.js', () => {
   class MockMcpServer {
-    tool(..._args: unknown[]) {}
+    constructor() {
+      lastRegisteredTools = [];
+    }
+    tool(...args: unknown[]) {
+      const name = args[0] as string;
+      lastRegisteredTools.push(name);
+      return {
+        remove: () => {
+          lastRegisteredTools = lastRegisteredTools.filter((n) => n !== name);
+        },
+      };
+    }
+    registerTool(...args: unknown[]) {
+      return this.tool(...args);
+    }
     connect() {
       return mockConnect();
     }
@@ -88,6 +107,8 @@ afterEach(() => {
   mockConnect.mockReset();
   mockConnect.mockResolvedValue(undefined);
   delete process.env.MCP_AUTH_SECRET;
+  delete process.env.MCP_READONLY_SECRET;
+  lastRegisteredTools = [];
 });
 
 // ── Authentication ────────────────────────────────────────────────────────────
@@ -270,5 +291,180 @@ describe('error handling', () => {
     expect(body).toHaveProperty('error');
     // Transport should not have been called since connect() failed first
     expect(mockHandleRequest).not.toHaveBeenCalled();
+  });
+});
+
+// ── Read-only key ─────────────────────────────────────────────────────────────
+
+function rpc(token: string, body: unknown): Request {
+  return new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+const LIST = { jsonrpc: '2.0', method: 'tools/list', params: {}, id: 1 };
+const callTool = (name: string, id: number | string = 2) => ({
+  jsonrpc: '2.0',
+  method: 'tools/call',
+  params: { name, arguments: {} },
+  id,
+});
+
+describe('read-only key', () => {
+  beforeEach(() => {
+    process.env.MCP_AUTH_SECRET = 'full-secret-123';
+    process.env.MCP_READONLY_SECRET = 'readonly-secret-456';
+  });
+
+  it('registers only get_* and list_* tools for the read-only token', async () => {
+    const res = await POST(rpc('readonly-secret-456', LIST));
+    expect(res.status).toBe(200);
+    expect(lastRegisteredTools.length).toBeGreaterThan(0);
+    for (const name of lastRegisteredTools) {
+      expect(name).toMatch(/^(get|list)_/);
+    }
+    expect(lastRegisteredTools).toContain('get_context');
+    expect(lastRegisteredTools).not.toContain('save_artifact');
+    expect(lastRegisteredTools).not.toContain('delete_artifact');
+    expect(lastRegisteredTools).not.toContain('apply_context_update');
+  });
+
+  it('rejects a tools/call of save_artifact with 403 and a JSON-RPC error', async () => {
+    const res = await POST(rpc('readonly-secret-456', callTool('save_artifact', 7)));
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as {
+      jsonrpc: string;
+      id: unknown;
+      error: { code: number; message: string };
+    };
+    expect(body.jsonrpc).toBe('2.0');
+    expect(body.id).toBe(7);
+    expect(body.error.message).toContain('save_artifact');
+    expect(mockHandleRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects a write call hidden inside a JSON-RPC batch', async () => {
+    const res = await POST(
+      rpc('readonly-secret-456', [callTool('get_context', 1), callTool('delete_campaign', 2)]),
+    );
+    expect(res.status).toBe(403);
+    expect(mockHandleRequest).not.toHaveBeenCalled();
+  });
+
+  it('lets the read-only token call a read tool', async () => {
+    const res = await POST(rpc('readonly-secret-456', callTool('get_context')));
+    expect(res.status).toBe(200);
+    expect(mockHandleRequest).toHaveBeenCalledOnce();
+  });
+
+  it('gives the full token every tool, including writes', async () => {
+    const res = await POST(rpc('full-secret-123', LIST));
+    expect(res.status).toBe(200);
+    expect(lastRegisteredTools).toContain('save_artifact');
+    expect(lastRegisteredTools).toContain('delete_artifact');
+    expect(lastRegisteredTools).toContain('apply_context_update');
+    expect(lastRegisteredTools).toContain('get_context');
+  });
+
+  it('lets the full token call a write tool', async () => {
+    const res = await POST(rpc('full-secret-123', callTool('save_artifact')));
+    expect(res.status).toBe(200);
+    expect(mockHandleRequest).toHaveBeenCalledOnce();
+  });
+
+  it('returns 401 for a wrong token', async () => {
+    const res = await POST(rpc('not-a-real-token', LIST));
+    expect(res.status).toBe(401);
+    expect(mockHandleRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects the read-only token when MCP_READONLY_SECRET is unset', async () => {
+    delete process.env.MCP_READONLY_SECRET;
+    const res = await POST(rpc('readonly-secret-456', LIST));
+    expect(res.status).toBe(401);
+    expect(mockHandleRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty bearer when MCP_READONLY_SECRET is set to an empty string', async () => {
+    process.env.MCP_READONLY_SECRET = '';
+    const res = await POST(
+      new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' },
+      }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a write tools/call sent as a notification (no id)', async () => {
+    const { id: _id, ...notification } = callTool('update_content');
+    const res = await POST(rpc('readonly-secret-456', notification));
+    expect(res.status).toBe(403);
+    expect(mockHandleRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tools/call with a missing or non-string tool name', async () => {
+    for (const params of [{}, { name: 42 }, { name: ['get_context'] }]) {
+      const res = await POST(
+        rpc('readonly-secret-456', { jsonrpc: '2.0', method: 'tools/call', params, id: 3 }),
+      );
+      expect(res.status).toBe(403);
+    }
+    const noParams = await POST(rpc('readonly-secret-456', { jsonrpc: '2.0', method: 'tools/call', id: 4 }));
+    expect(noParams.status).toBe(403);
+    expect(mockHandleRequest).not.toHaveBeenCalled();
+  });
+
+  it('does not treat tool names case-insensitively', async () => {
+    const res = await POST(rpc('readonly-secret-456', callTool('GET_CONTEXT')));
+    expect(res.status).toBe(403);
+  });
+
+  it('passes read-only GET and DELETE through with the read tools only', async () => {
+    const headers = { Authorization: 'Bearer readonly-secret-456' };
+    const getRes = await GET(new Request('http://localhost/api/mcp', { method: 'GET', headers }));
+    expect(getRes.status).toBe(200);
+    expect(lastRegisteredTools).not.toContain('save_artifact');
+    const delRes = await DELETE(new Request('http://localhost/api/mcp', { method: 'DELETE', headers }));
+    expect(delRes.status).toBe(200);
+    expect(mockHandleRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a read-only secret equal to the full secret as the full secret', async () => {
+    process.env.MCP_READONLY_SECRET = 'full-secret-123';
+    const res = await POST(rpc('full-secret-123', callTool('save_artifact')));
+    expect(res.status).toBe(200);
+    expect(lastRegisteredTools).toContain('save_artifact');
+  });
+
+  it('rejects a lowercase bearer scheme', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/mcp', {
+        method: 'POST',
+        headers: { Authorization: 'bearer readonly-secret-456' },
+      }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('does not reveal which secret is unset when only the read-only one is configured', async () => {
+    delete process.env.MCP_AUTH_SECRET;
+    const res = await POST(rpc('wrong', LIST));
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { hint?: string };
+    expect(body.hint).not.toContain('not set');
+  });
+
+  it('accepts the read-only token even when MCP_AUTH_SECRET is unset', async () => {
+    delete process.env.MCP_AUTH_SECRET;
+    const res = await POST(rpc('readonly-secret-456', LIST));
+    expect(res.status).toBe(200);
+    expect(lastRegisteredTools).not.toContain('save_artifact');
   });
 });

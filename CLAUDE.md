@@ -119,7 +119,8 @@ Do not pause for: UI components, API routes, lib utilities, types, bug fixes, de
 - Quiver supports two MCP transports:
   - Local stdio server (`mcp/index.ts`) for desktop/local clients.
   - Remote HTTP endpoint (`/api/mcp`) using Streamable HTTP transport for connector-based clients.
-- MCP HTTP auth is optional via `MCP_AUTH_SECRET` bearer token; if unset, endpoint is open by default.
+- MCP HTTP auth uses the `MCP_AUTH_SECRET` bearer token; if unset, the endpoint refuses every full-access request outside local development.
+- `MCP_READONLY_SECRET` is an optional second bearer token with the `readonly` role: only the tools in the explicit allowlist `mcp/lib/read-only-tools.ts` are registered, and any other `tools/call` is refused with 403. It works whether or not `MCP_AUTH_SECRET` is set. A new `get_*` or `list_*` tool must be added there (a test enforces it) and must not write.
 - Context update safety model:
   - `propose_context_update` creates a pending proposal log for human review.
   - `apply_context_update` applies immediately by calling `applyContextUpdates()` in `lib/db/context.ts`, which creates a new context version.
