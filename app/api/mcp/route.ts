@@ -20,8 +20,9 @@
  *     Claude browser connectors send the token automatically once configured.
  *   - Read-only key: set MCP_READONLY_SECRET to issue a second Bearer token
  *     that sees and calls only the tools in READ_ONLY_TOOLS. Enforced twice:
- *     other tools are removed as soon as they are registered for that caller, and a tools/call for
- *     one is refused with 403 before it reaches the transport.
+ *     other tools are removed as soon as they are registered for that
+ *     caller, and a tools/call for one is refused with 403 before it
+ *     reaches the transport.
  *   - Timeout: maxDuration 60 s covers all read tools comfortably. Upgrade to
  *     Vercel Pro and raise maxDuration to 300 if heavy write tools time out.
  */

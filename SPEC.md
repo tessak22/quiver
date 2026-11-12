@@ -621,7 +621,7 @@ ANTHROPIC_API_KEY=
 NEXT_PUBLIC_APP_URL=
 QUIVER_SHARE_SECRET=
 
-# Required in production: /api/mcp refuses everything without it
+# Required in production: /api/mcp refuses every full-access request without it
 MCP_AUTH_SECRET=
 
 # Optional: read-only Bearer token for /api/mcp (get_* and list_* tools only)
