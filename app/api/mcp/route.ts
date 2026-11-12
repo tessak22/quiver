@@ -15,11 +15,12 @@
  *     No shared in-memory session state between requests — compatible with
  *     Vercel serverless where instances don't share memory across invocations.
  *   - Auth: set MCP_AUTH_SECRET in env for Bearer token protection. Without
- *     it the endpoint refuses every request outside local development.
+ *     it the endpoint refuses every full-access request outside local
+ *     development.
  *     Claude browser connectors send the token automatically once configured.
  *   - Read-only key: set MCP_READONLY_SECRET to issue a second Bearer token
  *     that sees and calls only the tools in READ_ONLY_TOOLS. Enforced twice:
- *     other tools are never registered for that caller, and a tools/call for
+ *     other tools are removed as soon as they are registered for that caller, and a tools/call for
  *     one is refused with 403 before it reaches the transport.
  *   - Timeout: maxDuration 60 s covers all read tools comfortably. Upgrade to
  *     Vercel Pro and raise maxDuration to 300 if heavy write tools time out.

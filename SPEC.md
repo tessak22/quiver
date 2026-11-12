@@ -523,7 +523,7 @@ Claude Desktop / Cursor use the built `mcp/dist/index.js` command.
 
 Remote HTTP connector uses deployed endpoint:
 - `https://<your-domain>/api/mcp`
-- `MCP_AUTH_SECRET` Bearer token. Required in production: without it the endpoint refuses every request outside local development.
+- `MCP_AUTH_SECRET` Bearer token. Required in production: without it the endpoint refuses every full-access request outside local development.
 - `MCP_READONLY_SECRET` optional second Bearer token limited to the read tools in `mcp/lib/read-only-tools.ts`.
 
 ---
